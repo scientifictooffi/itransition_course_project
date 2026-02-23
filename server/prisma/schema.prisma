@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum InventoryCategory {
+  EQUIPMENT
+  FURNITURE
+  BOOK
+  OTHER
+}
+
+enum InventoryFieldType {
+  SINGLE_LINE_TEXT
+  MULTI_LINE_TEXT
+  NUMBER
+  LINK
+  BOOLEAN
+}
+
+enum CustomIdElementType {
+  FIXED_TEXT
+  RANDOM_20_BITS
+  RANDOM_32_BITS
+  RANDOM_6_DIGITS
+  RANDOM_9_DIGITS
+  GUID
+  DATETIME
+  SEQUENCE
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  avatarUrl String?
+  isBlocked Boolean  @default(false)
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownedInventories Inventory[]            @relation("InventoryOwner")
+  writeAccess      InventoryWriteAccess[]
+  items            Item[]                 @relation("ItemCreatedBy")
+  discussionPosts  DiscussionPost[]
+  likes            ItemLike[]
+}
+
+model Inventory {
+  id          String              @id @default(uuid())
+  title       String
+  description String?
+  category    InventoryCategory
+  imageUrl    String?
+  isPublic    Boolean             @default(false)
+  version     Int                 @default(1)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  owner   User   @relation("InventoryOwner", fields: [ownerId], references: [id])
+  ownerId String
+
+  tags             InventoryTag[]
+  writeAccess      InventoryWriteAccess[]
+  fields           InventoryField[]
+  items            Item[]
+  discussion       DiscussionPost[]
+  customIdElements InventoryCustomIdElement[]
+}
+
+model Tag {
+  id        String        @id @default(uuid())
+  name      String        @unique
+  createdAt DateTime      @default(now())
+  inventories InventoryTag[]
+}
+
+model InventoryTag {
+  inventory   Inventory @relation(fields: [inventoryId], references: [id])
+  inventoryId String
+  tag         Tag       @relation(fields: [tagId], references: [id])
+  tagId       String
+
+  @@id([inventoryId, tagId])
+}
+
+model InventoryWriteAccess {
+  inventory   Inventory @relation(fields: [inventoryId], references: [id])
+  inventoryId String
+  user        User      @relation(fields: [userId], references: [id])
+  userId      String
+
+  @@id([inventoryId, userId])
+}
+
+model InventoryField {
+  id          String             @id @default(uuid())
+  inventory   Inventory          @relation(fields: [inventoryId], references: [id])
+  inventoryId String
+  type        InventoryFieldType
+  title       String
+  description String?
+  showInTable Boolean            @default(false)
+  orderIndex  Int
+
+  values ItemFieldValue[]
+}
+
+model Item {
+  id          String    @id @default(uuid())
+  inventory   Inventory @relation(fields: [inventoryId], references: [id])
+  inventoryId String
+  customId    String
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  createdBy   User   @relation("ItemCreatedBy", fields: [createdById], references: [id])
+  createdById String
+
+  fieldValues ItemFieldValue[]
+  likes       ItemLike[]
+
+  @@unique([inventoryId, customId])
+}
+
+model ItemFieldValue {
+  id           String          @id @default(uuid())
+  item         Item            @relation(fields: [itemId], references: [id])
+  itemId       String
+  field        InventoryField  @relation(fields: [fieldId], references: [id])
+  fieldId      String
+
+  valueString  String?
+  valueNumber  Float?
+  valueBoolean Boolean?
+  valueLink    String?
+}
+
+model ItemLike {
+  item      Item   @relation(fields: [itemId], references: [id])
+  itemId    String
+  user      User   @relation(fields: [userId], references: [id])
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@id([itemId, userId])
+}
+
+model DiscussionPost {
+  id          String    @id @default(uuid())
+  inventory   Inventory @relation(fields: [inventoryId], references: [id])
+  inventoryId String
+  author      User      @relation(fields: [authorId], references: [id])
+  authorId    String
+  content     String
+  createdAt   DateTime  @default(now())
+}
+
+model InventoryCustomIdElement {
+  id          String              @id @default(uuid())
+  inventory   Inventory           @relation(fields: [inventoryId], references: [id])
+  inventoryId String
+  type        CustomIdElementType
+  orderIndex  Int
+  fixedText   String?
+  numberWidth Int?
+}
+
