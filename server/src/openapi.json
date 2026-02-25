@@ -48,7 +48,11 @@
             }
           }
         },
-        "responses": { "201": { "description": "Created" }, "400": { "description": "Bad request" }, "404": { "description": "Owner not found" } }
+        "responses": {
+          "201": { "description": "Created" },
+          "400": { "description": "Bad request" },
+          "404": { "description": "Owner not found" }
+        }
       }
     },
     "/api/inventories/{id}": {
@@ -71,19 +75,27 @@
                   "description": { "type": "string" },
                   "category": { "type": "string", "enum": ["EQUIPMENT", "FURNITURE", "BOOK", "OTHER"] },
                   "isPublic": { "type": "boolean" },
+                  "tags": { "type": "array", "items": { "type": "string" } },
                   "version": { "type": "integer" }
                 }
               }
             }
           }
         },
-        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" }, "409": { "description": "Version conflict" } }
+        "responses": {
+          "200": { "description": "OK" },
+          "404": { "description": "Not found" },
+          "409": { "description": "Version conflict" }
+        }
       }
     },
     "/api/inventories/{id}/items": {
       "get": {
         "summary": "List items",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "userEmail", "in": "query", "schema": { "type": "string" } }
+        ],
         "responses": { "200": { "description": "OK" }, "404": { "description": "Inventory not found" } }
       },
       "post": {
@@ -95,12 +107,19 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": { "customId": { "type": "string" }, "createdByEmail": { "type": "string" } }
+                "properties": {
+                  "customId": { "type": "string" },
+                  "createdByEmail": { "type": "string" }
+                }
               }
             }
           }
         },
-        "responses": { "201": { "description": "Created" }, "404": { "description": "Not found" }, "409": { "description": "Duplicate custom ID" } }
+        "responses": {
+          "201": { "description": "Created" },
+          "404": { "description": "Not found" },
+          "409": { "description": "Duplicate custom ID" }
+        }
       }
     },
     "/api/inventories/{id}/custom-id": {
@@ -123,7 +142,19 @@
                     "items": {
                       "type": "object",
                       "properties": {
-                        "type": { "type": "string", "enum": ["FIXED_TEXT", "RANDOM_20_BITS", "RANDOM_32_BITS", "RANDOM_6_DIGITS", "RANDOM_9_DIGITS", "GUID", "DATETIME", "SEQUENCE"] },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "FIXED_TEXT",
+                            "RANDOM_20_BITS",
+                            "RANDOM_32_BITS",
+                            "RANDOM_6_DIGITS",
+                            "RANDOM_9_DIGITS",
+                            "GUID",
+                            "DATETIME",
+                            "SEQUENCE"
+                          ]
+                        },
                         "orderIndex": { "type": "integer" },
                         "fixedText": { "type": "string", "nullable": true },
                         "numberWidth": { "type": "integer", "nullable": true }
@@ -142,7 +173,20 @@
       "get": {
         "summary": "Preview generated custom ID",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "preview": { "type": "string" } } } } }, "404": { "description": "Not found" } }
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "preview": { "type": "string" } }
+                }
+              }
+            }
+          },
+          "404": { "description": "Not found" }
+        }
       }
     },
     "/api/inventories/{id}/discussion": {
@@ -157,11 +201,22 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "type": "object", "required": ["content"], "properties": { "content": { "type": "string" }, "authorEmail": { "type": "string" } } }
+              "schema": {
+                "type": "object",
+                "required": ["content"],
+                "properties": {
+                  "content": { "type": "string" },
+                  "authorEmail": { "type": "string" }
+                }
+              }
             }
           }
         },
-        "responses": { "201": { "description": "Created" }, "400": { "description": "Content required" }, "404": { "description": "Not found" } }
+        "responses": {
+          "201": { "description": "Created" },
+          "400": { "description": "Content required" },
+          "404": { "description": "Not found" }
+        }
       }
     },
     "/api/inventories/{id}/access": {
@@ -176,11 +231,20 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "type": "object", "properties": { "userId": { "type": "string" }, "email": { "type": "string" } } }
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userId": { "type": "string" },
+                  "email": { "type": "string" }
+                }
+              }
             }
           }
         },
-        "responses": { "201": { "description": "Created" }, "404": { "description": "User or inventory not found" } }
+        "responses": {
+          "201": { "description": "Created" },
+          "404": { "description": "User or inventory not found" }
+        }
       },
       "delete": {
         "summary": "Remove users from write access",
@@ -188,11 +252,20 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "type": "object", "required": ["userIds"], "properties": { "userIds": { "type": "array", "items": { "type": "string" } } } }
+              "schema": {
+                "type": "object",
+                "required": ["userIds"],
+                "properties": {
+                  "userIds": { "type": "array", "items": { "type": "string" } }
+                }
+              }
             }
           }
         },
-        "responses": { "204": { "description": "No content" }, "400": { "description": "userIds required" } }
+        "responses": {
+          "204": { "description": "No content" },
+          "400": { "description": "userIds required" }
+        }
       }
     },
     "/api/inventories/{id}/fields": {
@@ -217,7 +290,10 @@
                       "type": "object",
                       "required": ["type", "title"],
                       "properties": {
-                        "type": { "type": "string", "enum": ["SINGLE_LINE_TEXT", "MULTI_LINE_TEXT", "NUMBER", "LINK", "BOOLEAN"] },
+                        "type": {
+                          "type": "string",
+                          "enum": ["SINGLE_LINE_TEXT", "MULTI_LINE_TEXT", "NUMBER", "LINK", "BOOLEAN"]
+                        },
                         "title": { "type": "string" },
                         "description": { "type": "string", "nullable": true },
                         "showInTable": { "type": "boolean" },
@@ -230,7 +306,11 @@
             }
           }
         },
-        "responses": { "200": { "description": "OK" }, "400": { "description": "Validation" }, "404": { "description": "Not found" } }
+        "responses": {
+          "200": { "description": "OK" },
+          "400": { "description": "Validation" },
+          "404": { "description": "Not found" }
+        }
       }
     },
     "/api/inventories/{id}/stats": {
@@ -245,7 +325,229 @@
       "get": {
         "summary": "Search users (autocomplete)",
         "parameters": [{ "name": "query", "in": "query", "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "OK" } } }
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/search": {
+      "get": {
+        "summary": "Search inventories",
+        "description": "Search inventories by text and/or tag.",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" } },
+          { "name": "tag", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/items/likes": {
+      "post": {
+        "summary": "Like items",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["itemIds"],
+                "properties": {
+                  "itemIds": { "type": "array", "items": { "type": "string" } },
+                  "userEmail": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "No content" },
+          "400": { "description": "itemIds required" },
+          "404": { "description": "User not found" }
+        }
+      },
+      "delete": {
+        "summary": "Unlike items",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["itemIds"],
+                "properties": {
+                  "itemIds": { "type": "array", "items": { "type": "string" } },
+                  "userEmail": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "No content" },
+          "400": { "description": "itemIds required" },
+          "404": { "description": "User not found" }
+        }
+      }
+    },
+    "/api/tags/search": {
+      "get": {
+        "summary": "Search tags for autocomplete",
+        "parameters": [{ "name": "q", "in": "query", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/items/{id}": {
+      "get": {
+        "summary": "Get single item with custom fields",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
+      },
+      "patch": {
+        "summary": "Update item (optimistic locking)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["version"],
+                "properties": {
+                  "customId": { "type": "string" },
+                  "version": { "type": "integer" },
+                  "fields": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["fieldId"],
+                      "properties": {
+                        "fieldId": { "type": "string" },
+                        "valueString": { "type": "string", "nullable": true },
+                        "valueNumber": { "type": "number", "nullable": true },
+                        "valueBoolean": { "type": "boolean", "nullable": true },
+                        "valueLink": { "type": "string", "nullable": true }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "OK" },
+          "404": { "description": "Not found" },
+          "409": { "description": "Version conflict or duplicate custom ID" }
+        }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "summary": "List users for admin panel",
+        "responses": { "200": { "description": "OK" } }
+      },
+      "delete": {
+        "summary": "Delete users",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["userIds"],
+                "properties": {
+                  "userIds": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "No content" },
+          "400": { "description": "userIds required" }
+        }
+      }
+    },
+    "/api/admin/users/block": {
+      "post": {
+        "summary": "Block users",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["userIds"],
+                "properties": {
+                  "userIds": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "No content" },
+          "400": { "description": "userIds required" }
+        }
+      }
+    },
+    "/api/admin/users/unblock": {
+      "post": {
+        "summary": "Unblock users",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["userIds"],
+                "properties": {
+                  "userIds": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "No content" },
+          "400": { "description": "userIds required" }
+        }
+      }
+    },
+    "/api/admin/users/make-admin": {
+      "post": {
+        "summary": "Grant admin role",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["userIds"],
+                "properties": {
+                  "userIds": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "No content" },
+          "400": { "description": "userIds required" }
+        }
+      }
+    },
+    "/api/admin/users/remove-admin": {
+      "post": {
+        "summary": "Revoke admin role",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["userIds"],
+                "properties": {
+                  "userIds": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "No content" },
+          "400": { "description": "userIds required" }
+        }
       }
     }
   }

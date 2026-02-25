@@ -70,6 +70,20 @@ interface LikePayload {
   userEmail?: string;
 }
 
+type ItemFieldValuePayload = {
+  fieldId: string;
+  valueString?: string | null;
+  valueNumber?: number | null;
+  valueBoolean?: boolean | null;
+  valueLink?: string | null;
+};
+
+interface ItemUpdatePayload {
+  customId?: string;
+  version: number;
+  fields?: ItemFieldValuePayload[];
+}
+
 async function generateCustomIdForInventory(inventoryId: string): Promise<string> {
   const elements = await prisma.inventoryCustomIdElement.findMany({
     where: { inventoryId },
@@ -568,6 +582,212 @@ app.post("/api/inventories/:id/items", async (req: Request, res: Response) => {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/inventories/:id/items", error);
     res.status(500).json({ message: "Failed to create item" });
+  }
+});
+
+app.get("/api/items/:id", async (req: Request, res: Response) => {
+  try {
+    const itemId = req.params.id;
+
+    const item = await prisma.item.findUnique({
+      where: { id: itemId },
+      include: {
+        createdBy: { select: { name: true, email: true } },
+        fieldValues: {
+          include: {
+            field: true,
+          },
+        },
+        inventory: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    if (!item) {
+      return res.status(404).json({ message: "Item not found" });
+    }
+
+    res.json({
+      id: item.id,
+      inventoryId: item.inventory.id,
+      customId: item.customId,
+      version: item.version,
+      createdAt: item.createdAt,
+      createdByName: item.createdBy.name ?? item.createdBy.email,
+      fields: item.fieldValues.map((value) => ({
+        fieldId: value.fieldId,
+        title: value.field.title,
+        type: value.field.type,
+        description: value.field.description,
+        valueString: value.valueString,
+        valueNumber: value.valueNumber,
+        valueBoolean: value.valueBoolean,
+        valueLink: value.valueLink,
+      })),
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/items/:id", error);
+    res.status(500).json({ message: "Failed to load item" });
+  }
+});
+
+app.patch("/api/items/:id", async (req: Request, res: Response) => {
+  try {
+    const itemId = req.params.id;
+    const { customId, version, fields }: ItemUpdatePayload = req.body ?? {};
+
+    const current = await prisma.item.findUnique({
+      where: { id: itemId },
+      include: {
+        inventory: {
+          select: { id: true },
+        },
+        createdBy: {
+          select: { name: true, email: true },
+        },
+        fieldValues: {
+          include: {
+            field: true,
+          },
+        },
+      },
+    });
+
+    if (!current) {
+      return res.status(404).json({ message: "Item not found" });
+    }
+
+    if (version !== current.version) {
+      return res.status(409).json({
+        message: "Item has been modified by someone else.",
+        current: {
+          id: current.id,
+          inventoryId: current.inventory.id,
+          customId: current.customId,
+          version: current.version,
+          createdAt: current.createdAt,
+          createdByName: current.createdBy.name ?? current.createdBy.email,
+          fields: current.fieldValues.map((value) => ({
+            fieldId: value.fieldId,
+            title: value.field.title,
+            type: value.field.type,
+            description: value.field.description,
+            valueString: value.valueString,
+            valueNumber: value.valueNumber,
+            valueBoolean: value.valueBoolean,
+            valueLink: value.valueLink,
+          })),
+        },
+      });
+    }
+
+    const sanitizedFields: ItemFieldValuePayload[] | null = Array.isArray(fields)
+      ? fields.map((field) => ({
+          fieldId: field.fieldId,
+          valueString: field.valueString ?? null,
+          valueNumber:
+            typeof field.valueNumber === "number" && !Number.isNaN(field.valueNumber)
+              ? field.valueNumber
+              : null,
+          valueBoolean:
+            typeof field.valueBoolean === "boolean" ? field.valueBoolean : null,
+          valueLink: field.valueLink ?? null,
+        }))
+      : null;
+
+    try {
+      const updated = await prisma.$transaction(async (tx) => {
+        const updatedItem = await tx.item.update({
+          where: { id: itemId },
+          data: {
+            customId: customId ?? current.customId,
+            version: {
+              increment: 1,
+            },
+          },
+        });
+
+        if (sanitizedFields) {
+          await tx.itemFieldValue.deleteMany({
+            where: { itemId },
+          });
+
+          const valuesToCreate = sanitizedFields
+            .filter(
+              (field) =>
+                field.valueString !== null ||
+                field.valueNumber !== null ||
+                field.valueBoolean !== null ||
+                field.valueLink !== null,
+            )
+            .map((field) => ({
+              itemId,
+              fieldId: field.fieldId,
+              valueString: field.valueString,
+              valueNumber: field.valueNumber,
+              valueBoolean: field.valueBoolean,
+              valueLink: field.valueLink,
+            }));
+
+          if (valuesToCreate.length > 0) {
+            await tx.itemFieldValue.createMany({
+              data: valuesToCreate,
+            });
+          }
+        }
+
+        return tx.item.findUniqueOrThrow({
+          where: { id: updatedItem.id },
+          include: {
+            inventory: {
+              select: { id: true },
+            },
+            createdBy: {
+              select: { name: true, email: true },
+            },
+            fieldValues: {
+              include: {
+                field: true,
+              },
+            },
+          },
+        });
+      });
+
+      res.json({
+        id: updated.id,
+        inventoryId: updated.inventory.id,
+        customId: updated.customId,
+        version: updated.version,
+        createdAt: updated.createdAt,
+        createdByName: updated.createdBy.name ?? updated.createdBy.email,
+        fields: updated.fieldValues.map((value) => ({
+          fieldId: value.fieldId,
+          title: value.field.title,
+          type: value.field.type,
+          description: value.field.description,
+          valueString: value.valueString,
+          valueNumber: value.valueNumber,
+          valueBoolean: value.valueBoolean,
+          valueLink: value.valueLink,
+        })),
+      });
+    } catch (err) {
+      if (err instanceof Error && "code" in err && (err as any).code === "P2002") {
+        return res.status(409).json({
+          message: "Custom ID already exists in this inventory. Please choose another value.",
+        });
+      }
+      throw err;
+    }
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in PATCH /api/items/:id", error);
+    res.status(500).json({ message: "Failed to update item" });
   }
 });
 

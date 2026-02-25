@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import { CustomIdTab } from "../components/CustomIdTab";
 import { FieldsTab } from "../components/FieldsTab";
 import { StatsTab } from "../components/StatsTab";
+import { ItemEditModal } from "../components/ItemEditModal";
 
 type InventoryTab =
   | "items"
@@ -261,6 +262,8 @@ export const InventoryPage: React.FC = () => {
       setError("Failed to create item.");
     }
   };
+
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
 
   const toggleItemSelection = (itemId: string) => {
     setSelectedItemIds((prev) => {
@@ -591,6 +594,19 @@ export const InventoryPage: React.FC = () => {
                   disabled={selectedItemIds.size === 0}
                 >
                   Unlike selected
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary"
+                  onClick={() => {
+                    if (selectedItemIds.size === 1) {
+                      const [first] = Array.from(selectedItemIds);
+                      setEditingItemId(first);
+                    }
+                  }}
+                  disabled={selectedItemIds.size !== 1}
+                >
+                  Edit selected
                 </button>
               </div>
             </div>
@@ -997,6 +1013,15 @@ export const InventoryPage: React.FC = () => {
 
         {activeTab === "stats" && <StatsTab inventoryId={inventoryId} />}
       </div>
+      {editingItemId && (
+        <ItemEditModal
+          itemId={editingItemId}
+          onClose={() => setEditingItemId(null)}
+          onSaved={() => {
+            void loadItems();
+          }}
+        />
+      )}
     </div>
   );
 };
