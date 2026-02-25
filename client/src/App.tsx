@@ -66,6 +66,12 @@ const App: React.FC = () => {
             {theme === "light" ? "🌞" : "🌙"}
           </button>
 
+          <Link to="/profile" className="me-2">
+            <button type="button" className="app-header__auth-button">
+              {language === "en" ? "My page" : "Моя страница"}
+            </button>
+          </Link>
+
           <Link to="/login">
             <button type="button" className="app-header__auth-button">
               {language === "en" ? "Sign in" : "Войти"}

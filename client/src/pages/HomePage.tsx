@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { InventoryTable } from "../components/InventoryTable";
 import { TagCloud } from "../components/TagCloud";
 import type { InventorySummary } from "../types/inventory";
@@ -8,53 +9,63 @@ interface HomePageProps {
   language: Language;
 }
 
-const latestInventoriesMock: InventorySummary[] = [
-  {
-    id: "1",
-    name: "Office laptops",
-    description: "Company laptops and notebooks.",
-    ownerName: "Alice",
-    itemsCount: 42,
-    tags: ["equipment", "laptop"],
-  },
-  {
-    id: "2",
-    name: "Library books",
-    description: "Public library collection.",
-    ownerName: "Bob",
-    itemsCount: 320,
-    tags: ["books"],
-  },
-];
+interface TagDto {
+  id: string;
+  label: string;
+  count: number;
+}
 
-const popularInventoriesMock: InventorySummary[] = [
-  {
-    id: "2",
-    name: "Library books",
-    description: "Public library collection.",
-    ownerName: "Bob",
-    itemsCount: 320,
-    tags: ["books"],
-  },
-  {
-    id: "3",
-    name: "HR documents",
-    description: "Employee contracts and policies.",
-    ownerName: "Carol",
-    itemsCount: 85,
-    tags: ["documents", "hr"],
-  },
-];
-
-const tagsMock = [
-  { id: "equipment", label: "equipment", count: 12 },
-  { id: "laptop", label: "laptop", count: 7 },
-  { id: "books", label: "books", count: 15 },
-  { id: "documents", label: "documents", count: 9 },
-  { id: "hr", label: "hr", count: 4 },
-];
+interface HomeResponseDto {
+  latestInventories: InventorySummary[];
+  popularInventories: InventorySummary[];
+  tags: TagDto[];
+}
 
 export const HomePage: React.FC<HomePageProps> = ({ language }) => {
+  const [latestInventories, setLatestInventories] = useState<InventorySummary[]>([]);
+  const [popularInventories, setPopularInventories] = useState<InventorySummary[]>([]);
+  const [tags, setTags] = useState<TagDto[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
+        const response = await fetch(`${apiBase}/api/home`, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to load home data: ${response.status}`);
+        }
+
+        const data: HomeResponseDto = await response.json();
+        setLatestInventories(data.latestInventories);
+        setPopularInventories(data.popularInventories);
+        setTags(data.tags);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        // eslint-disable-next-line no-console
+        console.error(err);
+        setError("Failed to load data from server.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+
+    return () => controller.abort();
+  }, []);
+
   return (
     <div className="container-fluid">
       <div className="row">
@@ -70,14 +81,16 @@ export const HomePage: React.FC<HomePageProps> = ({ language }) => {
                 ? "Latest inventories and the most popular ones. Data is mocked for now."
                 : "Последние и самые популярные инвентари. Пока данные моковые."}
             </p>
+            {loading && <p className="text-muted mb-0">Loading...</p>}
+            {error && <p className="text-danger mb-0">{error}</p>}
           </section>
 
-          <InventoryTable title="Latest inventories" inventories={latestInventoriesMock} />
-          <InventoryTable title="Top 5 popular inventories" inventories={popularInventoriesMock} />
+          <InventoryTable title="Latest inventories" inventories={latestInventories} />
+          <InventoryTable title="Top 5 popular inventories" inventories={popularInventories} />
         </div>
 
         <div className="col-lg-4">
-          <TagCloud tags={tagsMock} />
+          <TagCloud tags={tags} />
         </div>
       </div>
     </div>
