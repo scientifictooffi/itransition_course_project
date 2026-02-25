@@ -1,3 +1,5 @@
+import { useNavigate } from "react-router-dom";
+
 interface Tag {
   id: string;
   label: string;
@@ -9,6 +11,7 @@ interface TagCloudProps {
 }
 
 export const TagCloud: React.FC<TagCloudProps> = ({ tags }) => {
+  const navigate = useNavigate();
   const maxCount = Math.max(...tags.map((tag) => tag.count), 1);
 
   return (
@@ -20,12 +23,17 @@ export const TagCloud: React.FC<TagCloudProps> = ({ tags }) => {
             const weight = 0.8 + (tag.count / maxCount) * 0.7;
             const fontSize = `${0.8 * weight}rem`;
 
+            const handleClick = () => {
+              navigate(`/search?tag=${encodeURIComponent(tag.label)}`);
+            };
+
             return (
               <button
                 key={tag.id}
                 type="button"
                 className="btn btn-outline-secondary btn-sm"
                 style={{ fontSize }}
+                onClick={handleClick}
               >
                 {tag.label}
               </button>

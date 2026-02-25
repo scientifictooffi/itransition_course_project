@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link, Route, Routes, useNavigate } from "react-router-dom";
 import "./App.css";
 
@@ -15,8 +15,16 @@ type Language = "en" | "ru";
 
 const App: React.FC = () => {
   const navigate = useNavigate();
-  const [theme, setTheme] = useState<Theme>("light");
-  const [language, setLanguage] = useState<Language>("en");
+  const [theme, setTheme] = useState<Theme>(() => {
+    if (typeof window === "undefined") return "light";
+    const stored = window.localStorage.getItem("app-theme");
+    return stored === "dark" || stored === "light" ? stored : "light";
+  });
+  const [language, setLanguage] = useState<Language>(() => {
+    if (typeof window === "undefined") return "en";
+    const stored = window.localStorage.getItem("app-language");
+    return stored === "ru" || stored === "en" ? stored : "en";
+  });
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -31,6 +39,16 @@ const App: React.FC = () => {
   const handleLanguageChange = (value: Language) => {
     setLanguage(value);
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("app-theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("app-language", language);
+  }, [language]);
 
   return (
     <div className={`app app--${theme}`}>

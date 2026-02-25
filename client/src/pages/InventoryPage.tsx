@@ -20,6 +20,8 @@ interface InventoryItem {
   id: string;
   customId: string;
   createdByName: string;
+  likesCount: number;
+  likedByCurrentUser: boolean;
 }
 
 interface DiscussionPost {
@@ -52,6 +54,7 @@ export const InventoryPage: React.FC = () => {
   const params = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState<InventoryTab>("items");
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +68,10 @@ export const InventoryPage: React.FC = () => {
   const [settingsDescription, setSettingsDescription] = useState<string>("");
   const [settingsCategory, setSettingsCategory] = useState<InventoryCategory>("EQUIPMENT");
   const [settingsIsPublic, setSettingsIsPublic] = useState<boolean>(false);
+  const [settingsTags, setSettingsTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState<string>("");
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
+  const [tagSuggestionsLoading, setTagSuggestionsLoading] = useState<boolean>(false);
   const [settingsDirty, setSettingsDirty] = useState<boolean>(false);
   const [settingsSaving, setSettingsSaving] = useState<boolean>(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
@@ -103,6 +110,7 @@ export const InventoryPage: React.FC = () => {
       setSettingsDescription(data.description);
       setSettingsCategory(data.category);
       setSettingsIsPublic(data.isPublic);
+      setSettingsTags(data.tags);
       setSettingsDirty(false);
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -175,6 +183,7 @@ export const InventoryPage: React.FC = () => {
 
       const data: { items: InventoryItem[] } = await response.json();
       setItems(data.items);
+      setSelectedItemIds(new Set());
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(err);
@@ -253,6 +262,66 @@ export const InventoryPage: React.FC = () => {
     }
   };
 
+  const toggleItemSelection = (itemId: string) => {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  };
+
+  const handleLikeSelected = async () => {
+    if (selectedItemIds.size === 0) return;
+    try {
+      setError(null);
+      const response = await fetch(`${apiBase}/api/items/likes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ itemIds: Array.from(selectedItemIds) }),
+      });
+
+      if (!response.ok && response.status !== 204) {
+        throw new Error(`Failed to like items: ${response.status}`);
+      }
+
+      await loadItems();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(err);
+      setError("Failed to like selected items.");
+    }
+  };
+
+  const handleUnlikeSelected = async () => {
+    if (selectedItemIds.size === 0) return;
+    try {
+      setError(null);
+      const response = await fetch(`${apiBase}/api/items/likes`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ itemIds: Array.from(selectedItemIds) }),
+      });
+
+      if (!response.ok && response.status !== 204) {
+        throw new Error(`Failed to unlike items: ${response.status}`);
+      }
+
+      await loadItems();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(err);
+      setError("Failed to unlike selected items.");
+    }
+  };
+
   const handleAddPost = async () => {
     if (!inventoryId || !newPostContent.trim()) return;
     try {
@@ -295,6 +364,7 @@ export const InventoryPage: React.FC = () => {
           description: settingsDescription,
           category: settingsCategory,
           isPublic: settingsIsPublic,
+          tags: settingsTags,
           version: inventoryDetails.version,
         }),
       });
@@ -306,6 +376,7 @@ export const InventoryPage: React.FC = () => {
         setSettingsDescription(payload.current.description);
         setSettingsCategory(payload.current.category);
         setSettingsIsPublic(payload.current.isPublic);
+         setSettingsTags(payload.current.tags);
         setSettingsDirty(false);
         setSettingsConflict("Settings updated by someone else. Latest version loaded.");
         return;
@@ -317,6 +388,7 @@ export const InventoryPage: React.FC = () => {
 
       const data: InventoryDetails = await response.json();
       setInventoryDetails(data);
+      setSettingsTags(data.tags);
       setSettingsDirty(false);
       setSettingsLastSavedAt(new Date().toLocaleTimeString());
     } catch (err) {
@@ -412,6 +484,55 @@ export const InventoryPage: React.FC = () => {
     }
   };
 
+  const loadTagSuggestions = async (query: string) => {
+    const value = query.trim();
+    if (!value) {
+      setTagSuggestions([]);
+      return;
+    }
+
+    try {
+      setTagSuggestionsLoading(true);
+      const response = await fetch(
+        `${apiBase}/api/tags/search?q=${encodeURIComponent(value)}`,
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to search tags: ${response.status}`);
+      }
+
+      const data: { tags: string[] } = await response.json();
+      const existingLower = new Set(settingsTags.map((tag) => tag.toLowerCase()));
+      setTagSuggestions(
+        data.tags.filter((name) => !existingLower.has(name.toLowerCase())),
+      );
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(err);
+    } finally {
+      setTagSuggestionsLoading(false);
+    }
+  };
+
+  const handleAddTag = (name: string) => {
+    const value = name.trim();
+    if (!value) return;
+    setSettingsTags((prev) => {
+      const lower = value.toLowerCase();
+      if (prev.some((tag) => tag.toLowerCase() === lower)) {
+        return prev;
+      }
+      return [...prev, value];
+    });
+    setSettingsDirty(true);
+    setTagInput("");
+    setTagSuggestions([]);
+  };
+
+  const handleRemoveTag = (name: string) => {
+    setSettingsTags((prev) => prev.filter((tag) => tag !== name));
+    setSettingsDirty(true);
+  };
+
   return (
     <div className="container-fluid">
       <section className="mb-3">
@@ -451,9 +572,25 @@ export const InventoryPage: React.FC = () => {
             <div className="d-flex justify-content-between align-items-center mb-2">
               <span className="fw-semibold">Items</span>
               <div className="btn-toolbar gap-2">
-                {/* Toolbar: Add item, Delete selected, без кнопок в строках */}
+                {/* Toolbar: Add item, like/unlike selected, без кнопок в строках */}
                 <button type="button" className="btn btn-sm btn-primary" onClick={handleAddItem}>
                   Add item
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-primary"
+                  onClick={handleLikeSelected}
+                  disabled={selectedItemIds.size === 0}
+                >
+                  Like selected
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary"
+                  onClick={handleUnlikeSelected}
+                  disabled={selectedItemIds.size === 0}
+                >
+                  Unlike selected
                 </button>
               </div>
             </div>
@@ -474,21 +611,35 @@ export const InventoryPage: React.FC = () => {
                     </th>
                     <th scope="col">Custom ID</th>
                     <th scope="col">Created by</th>
+                    <th scope="col" style={{ width: "6rem" }}>
+                      Likes
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item) => (
                     <tr key={item.id}>
                       <td>
-                        <input type="checkbox" aria-label="Select item" />
+                        <input
+                          type="checkbox"
+                          aria-label="Select item"
+                          checked={selectedItemIds.has(item.id)}
+                          onChange={() => toggleItemSelection(item.id)}
+                        />
                       </td>
                       <td>{item.customId}</td>
                       <td>{item.createdByName}</td>
+                      <td>
+                        <span className="badge bg-light text-muted">
+                          {item.likesCount}
+                          {item.likedByCurrentUser ? " ★" : ""}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                   {items.length === 0 && !loading && !error && (
                     <tr>
-                      <td colSpan={3} className="text-muted text-center py-3">
+                      <td colSpan={4} className="text-muted text-center py-3">
                         No items yet.
                       </td>
                     </tr>
@@ -644,6 +795,61 @@ export const InventoryPage: React.FC = () => {
                     <span className="text-muted">Nothing to preview yet.</span>
                   )}
                 </div>
+              </div>
+
+              <div className="col-12">
+                <label className="form-label">Tags</label>
+                <div className="mb-2 d-flex flex-wrap gap-2">
+                  {settingsTags.map((tag) => (
+                    <span key={tag} className="badge bg-secondary d-inline-flex align-items-center">
+                      <span>{tag}</span>
+                      <button
+                        type="button"
+                        className="btn-close btn-close-white btn-sm ms-2"
+                        aria-label={`Remove tag ${tag}`}
+                        onClick={() => handleRemoveTag(tag)}
+                        style={{ fontSize: "0.5rem" }}
+                      />
+                    </span>
+                  ))}
+                  {settingsTags.length === 0 && (
+                    <span className="text-muted small">No tags yet.</span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={tagInput}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setTagInput(value);
+                    void loadTagSuggestions(value);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      handleAddTag(tagInput);
+                    }
+                  }}
+                  placeholder="Add a tag and press Enter..."
+                />
+                {tagSuggestionsLoading && (
+                  <p className="text-muted small mt-1 mb-0">Searching tags...</p>
+                )}
+                {tagSuggestions.length > 0 && (
+                  <ul className="list-group mt-1">
+                    {tagSuggestions.map((suggestion) => (
+                      <li
+                        key={suggestion}
+                        className="list-group-item list-group-item-action small"
+                        role="button"
+                        onClick={() => handleAddTag(suggestion)}
+                      >
+                        {suggestion}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </form>
 

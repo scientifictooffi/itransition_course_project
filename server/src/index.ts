@@ -65,6 +65,11 @@ interface TextFieldStats {
   topValues: TextFieldValueStats[];
 }
 
+interface LikePayload {
+  itemIds?: string[];
+  userEmail?: string;
+}
+
 async function generateCustomIdForInventory(inventoryId: string): Promise<string> {
   const elements = await prisma.inventoryCustomIdElement.findMany({
     where: { inventoryId },
@@ -315,12 +320,13 @@ app.get("/api/inventories/:id", async (req: Request, res: Response) => {
 app.patch("/api/inventories/:id", async (req: Request, res: Response) => {
   try {
     const inventoryId = req.params.id;
-    const { title, description, category, isPublic, version } = req.body as {
+    const { title, description, category, isPublic, version, tags } = req.body as {
       title?: string;
       description?: string;
       category?: "EQUIPMENT" | "FURNITURE" | "BOOK" | "OTHER";
       isPublic?: boolean;
       version: number;
+      tags?: string[];
     };
 
     const current = await prisma.inventory.findUnique({
@@ -347,18 +353,87 @@ app.patch("/api/inventories/:id", async (req: Request, res: Response) => {
       });
     }
 
-    const updated = await prisma.inventory.update({
-      where: { id: inventoryId },
-      data: {
-        title: title ?? current.title,
-        description: description ?? current.description,
-        category: category ?? current.category,
-        isPublic: typeof isPublic === "boolean" ? isPublic : current.isPublic,
-        version: {
-          increment: 1,
+    const normalizedTags = Array.isArray(tags)
+      ? Array.from(
+          new Set(
+            tags
+              .map((name) => name.trim())
+              .filter((name) => name.length > 0),
+          ),
+        )
+      : null;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedInventory = await tx.inventory.update({
+        where: { id: inventoryId },
+        data: {
+          title: title ?? current.title,
+          description: description ?? current.description,
+          category: category ?? current.category,
+          isPublic: typeof isPublic === "boolean" ? isPublic : current.isPublic,
+          version: {
+            increment: 1,
+          },
         },
-      },
-      include: { tags: { include: { tag: true } } },
+      });
+
+      if (normalizedTags) {
+        if (normalizedTags.length === 0) {
+          await tx.inventoryTag.deleteMany({
+            where: { inventoryId },
+          });
+        } else {
+          const existingTags = await tx.tag.findMany({
+            where: {
+              name: {
+                in: normalizedTags,
+              },
+            },
+          });
+
+          const existingNames = new Set(existingTags.map((tag) => tag.name));
+          const namesToCreate = normalizedTags.filter((name) => !existingNames.has(name));
+
+          if (namesToCreate.length > 0) {
+            await tx.tag.createMany({
+              data: namesToCreate.map((name) => ({ name })),
+              skipDuplicates: true,
+            });
+          }
+
+          const allTags = await tx.tag.findMany({
+            where: {
+              name: {
+                in: normalizedTags,
+              },
+            },
+          });
+
+          const tagIds = allTags.map((tag) => tag.id);
+
+          await tx.inventoryTag.deleteMany({
+            where: {
+              inventoryId,
+              tagId: {
+                notIn: tagIds,
+              },
+            },
+          });
+
+          await tx.inventoryTag.createMany({
+            data: tagIds.map((tagId) => ({
+              inventoryId,
+              tagId,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      return tx.inventory.findUniqueOrThrow({
+        where: { id: updatedInventory.id },
+        include: { tags: { include: { tag: true } } },
+      });
     });
 
     res.json({
@@ -390,13 +465,34 @@ app.get("/api/inventories/:id/items", async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Inventory not found" });
     }
 
-    const items = await prisma.item.findMany({
-      where: { inventoryId },
-      orderBy: { createdAt: "desc" },
-      include: {
-        createdBy: { select: { name: true, email: true } },
-      },
+    const email = (req.query.userEmail as string | undefined) || "demo@example.com";
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
     });
+
+    const [items, userLikes] = await Promise.all([
+      prisma.item.findMany({
+        where: { inventoryId },
+        orderBy: { createdAt: "desc" },
+        include: {
+          createdBy: { select: { name: true, email: true } },
+          _count: { select: { likes: true } },
+        },
+      }),
+      user
+        ? prisma.itemLike.findMany({
+            where: {
+              userId: user.id,
+              item: { inventoryId },
+            },
+            select: { itemId: true },
+          })
+        : [],
+    ]);
+
+    const likedItemIds = new Set(userLikes.map((like) => like.itemId));
 
     res.json({
       items: items.map((item) => ({
@@ -404,6 +500,8 @@ app.get("/api/inventories/:id/items", async (req: Request, res: Response) => {
         customId: item.customId,
         createdByName: item.createdBy.name ?? item.createdBy.email,
         createdAt: item.createdAt,
+        likesCount: item._count.likes,
+        likedByCurrentUser: likedItemIds.has(item.id),
       })),
     });
   } catch (error) {
@@ -1039,6 +1137,320 @@ app.get("/api/inventories/:id/stats", async (req: Request, res: Response) => {
     // eslint-disable-next-line no-console
     console.error("Error in GET /api/inventories/:id/stats", error);
     res.status(500).json({ message: "Failed to load statistics" });
+  }
+});
+
+app.get("/api/search", async (req: Request, res: Response) => {
+  try {
+    const qRaw = (req.query.q as string | undefined) ?? "";
+    const tagRaw = (req.query.tag as string | undefined) ?? "";
+
+    const q = qRaw.trim();
+    const tag = tagRaw.trim();
+
+    if (!q && !tag) {
+      return res.json({ inventories: [] });
+    }
+
+    const whereClauses: Parameters<typeof prisma.inventory.findMany>[0]["where"][] = [];
+
+    if (q) {
+      whereClauses.push({
+        OR: [
+          { title: { contains: q, mode: "insensitive" } },
+          { description: { contains: q, mode: "insensitive" } },
+        ],
+      });
+    }
+
+    if (tag) {
+      whereClauses.push({
+        tags: {
+          some: {
+            tag: {
+              name: tag,
+            },
+          },
+        },
+      });
+    }
+
+    const inventoriesRaw = await prisma.inventory.findMany({
+      where:
+        whereClauses.length === 0
+          ? undefined
+          : {
+              AND: whereClauses,
+            },
+      include: {
+        owner: { select: { name: true, email: true } },
+        tags: {
+          include: {
+            tag: true,
+          },
+        },
+        _count: {
+          select: {
+            items: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 50,
+    });
+
+    const inventories = inventoriesRaw.map((inventory) => ({
+      id: inventory.id,
+      name: inventory.title,
+      description: inventory.description ?? "",
+      ownerName: inventory.owner.name ?? inventory.owner.email,
+      itemsCount: inventory._count.items,
+      tags: inventory.tags.map((t) => t.tag.name),
+    }));
+
+    res.json({ inventories });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/search", error);
+    res.status(500).json({ message: "Failed to perform search" });
+  }
+});
+
+app.post("/api/items/likes", async (req: Request, res: Response) => {
+  try {
+    const { itemIds, userEmail }: LikePayload = req.body ?? {};
+
+    if (!itemIds || itemIds.length === 0) {
+      return res.status(400).json({ message: "itemIds are required" });
+    }
+
+    const email = userEmail || "demo@example.com";
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    await prisma.itemLike.createMany({
+      data: itemIds.map((itemId) => ({
+        itemId,
+        userId: user.id,
+      })),
+      skipDuplicates: true,
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/items/likes", error);
+    res.status(500).json({ message: "Failed to like items" });
+  }
+});
+
+app.delete("/api/items/likes", async (req: Request, res: Response) => {
+  try {
+    const { itemIds, userEmail }: LikePayload = req.body ?? {};
+
+    if (!itemIds || itemIds.length === 0) {
+      return res.status(400).json({ message: "itemIds are required" });
+    }
+
+    const email = userEmail || "demo@example.com";
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    await prisma.itemLike.deleteMany({
+      where: {
+        userId: user.id,
+        itemId: { in: itemIds },
+      },
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in DELETE /api/items/likes", error);
+    res.status(500).json({ message: "Failed to unlike items" });
+  }
+});
+
+app.get("/api/tags/search", async (req: Request, res: Response) => {
+  try {
+    const qRaw = (req.query.q as string | undefined) ?? "";
+    const query = qRaw.trim();
+
+    if (!query) {
+      return res.json({ tags: [] });
+    }
+
+    const tags = await prisma.tag.findMany({
+      where: {
+        name: {
+          startsWith: query,
+          mode: "insensitive",
+        },
+      },
+      orderBy: {
+        name: "asc",
+      },
+      take: 10,
+    });
+
+    res.json({
+      tags: tags.map((tag) => tag.name),
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/tags/search", error);
+    res.status(500).json({ message: "Failed to search tags" });
+  }
+});
+
+app.get("/api/admin/users", async (req: Request, res: Response) => {
+  try {
+    const users = await prisma.user.findMany({
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    res.json({
+      users: users.map((user) => ({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        isBlocked: user.isBlocked,
+        createdAt: user.createdAt,
+      })),
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/admin/users", error);
+    res.status(500).json({ message: "Failed to load users" });
+  }
+});
+
+interface AdminUsersPayload {
+  userIds?: string[];
+}
+
+app.post("/api/admin/users/block", async (req: Request, res: Response) => {
+  try {
+    const { userIds }: AdminUsersPayload = req.body ?? {};
+
+    if (!userIds || userIds.length === 0) {
+      return res.status(400).json({ message: "userIds are required" });
+    }
+
+    await prisma.user.updateMany({
+      where: { id: { in: userIds } },
+      data: { isBlocked: true },
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/admin/users/block", error);
+    res.status(500).json({ message: "Failed to block users" });
+  }
+});
+
+app.post("/api/admin/users/unblock", async (req: Request, res: Response) => {
+  try {
+    const { userIds }: AdminUsersPayload = req.body ?? {};
+
+    if (!userIds || userIds.length === 0) {
+      return res.status(400).json({ message: "userIds are required" });
+    }
+
+    await prisma.user.updateMany({
+      where: { id: { in: userIds } },
+      data: { isBlocked: false },
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/admin/users/unblock", error);
+    res.status(500).json({ message: "Failed to unblock users" });
+  }
+});
+
+app.post("/api/admin/users/make-admin", async (req: Request, res: Response) => {
+  try {
+    const { userIds }: AdminUsersPayload = req.body ?? {};
+
+    if (!userIds || userIds.length === 0) {
+      return res.status(400).json({ message: "userIds are required" });
+    }
+
+    await prisma.user.updateMany({
+      where: { id: { in: userIds } },
+      data: { role: "ADMIN" },
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/admin/users/make-admin", error);
+    res.status(500).json({ message: "Failed to grant admin role" });
+  }
+});
+
+app.post("/api/admin/users/remove-admin", async (req: Request, res: Response) => {
+  try {
+    const { userIds }: AdminUsersPayload = req.body ?? {};
+
+    if (!userIds || userIds.length === 0) {
+      return res.status(400).json({ message: "userIds are required" });
+    }
+
+    await prisma.user.updateMany({
+      where: { id: { in: userIds } },
+      data: { role: "USER" },
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/admin/users/remove-admin", error);
+    res.status(500).json({ message: "Failed to revoke admin role" });
+  }
+});
+
+app.delete("/api/admin/users", async (req: Request, res: Response) => {
+  try {
+    const { userIds }: AdminUsersPayload = req.body ?? {};
+
+    if (!userIds || userIds.length === 0) {
+      return res.status(400).json({ message: "userIds are required" });
+    }
+
+    await prisma.user.deleteMany({
+      where: {
+        id: { in: userIds },
+      },
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in DELETE /api/admin/users", error);
+    res.status(500).json({ message: "Failed to delete users" });
   }
 });
 
