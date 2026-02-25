@@ -1,0 +1,252 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Inventory Management API",
+    "description": "Backend API for the course project: inventories, items, discussion, access, custom ID, fields, stats.",
+    "version": "1.0.0"
+  },
+  "servers": [{ "url": "http://localhost:4000", "description": "Local" }],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/home": {
+      "get": {
+        "summary": "Home page data",
+        "description": "Latest inventories, popular inventories, tags.",
+        "responses": { "200": { "description": "OK" }, "500": { "description": "Server error" } }
+      }
+    },
+    "/api/profile": {
+      "get": {
+        "summary": "User profile",
+        "description": "Owned and writable inventories. Query: userEmail (optional).",
+        "parameters": [{ "name": "userEmail", "in": "query", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" }, "404": { "description": "User not found" } }
+      }
+    },
+    "/api/inventories": {
+      "post": {
+        "summary": "Create inventory",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title", "category"],
+                "properties": {
+                  "title": { "type": "string" },
+                  "description": { "type": "string" },
+                  "category": { "type": "string", "enum": ["EQUIPMENT", "FURNITURE", "BOOK", "OTHER"] },
+                  "isPublic": { "type": "boolean" },
+                  "ownerEmail": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Created" }, "400": { "description": "Bad request" }, "404": { "description": "Owner not found" } }
+      }
+    },
+    "/api/inventories/{id}": {
+      "get": {
+        "summary": "Get inventory details",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
+      },
+      "patch": {
+        "summary": "Update inventory (optimistic locking)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["version"],
+                "properties": {
+                  "title": { "type": "string" },
+                  "description": { "type": "string" },
+                  "category": { "type": "string", "enum": ["EQUIPMENT", "FURNITURE", "BOOK", "OTHER"] },
+                  "isPublic": { "type": "boolean" },
+                  "version": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" }, "409": { "description": "Version conflict" } }
+      }
+    },
+    "/api/inventories/{id}/items": {
+      "get": {
+        "summary": "List items",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Inventory not found" } }
+      },
+      "post": {
+        "summary": "Create item",
+        "description": "Custom ID optional; generated from format if omitted.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "customId": { "type": "string" }, "createdByEmail": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Created" }, "404": { "description": "Not found" }, "409": { "description": "Duplicate custom ID" } }
+      }
+    },
+    "/api/inventories/{id}/custom-id": {
+      "get": {
+        "summary": "Get custom ID format elements",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "summary": "Save custom ID format",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "elements": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": { "type": "string", "enum": ["FIXED_TEXT", "RANDOM_20_BITS", "RANDOM_32_BITS", "RANDOM_6_DIGITS", "RANDOM_9_DIGITS", "GUID", "DATETIME", "SEQUENCE"] },
+                        "orderIndex": { "type": "integer" },
+                        "fixedText": { "type": "string", "nullable": true },
+                        "numberWidth": { "type": "integer", "nullable": true }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/inventories/{id}/custom-id/preview": {
+      "get": {
+        "summary": "Preview generated custom ID",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "preview": { "type": "string" } } } } }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/inventories/{id}/discussion": {
+      "get": {
+        "summary": "List discussion posts",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
+      },
+      "post": {
+        "summary": "Add discussion post",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "required": ["content"], "properties": { "content": { "type": "string" }, "authorEmail": { "type": "string" } } }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Created" }, "400": { "description": "Content required" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/inventories/{id}/access": {
+      "get": {
+        "summary": "Get write access list",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
+      },
+      "post": {
+        "summary": "Add user to write access",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "properties": { "userId": { "type": "string" }, "email": { "type": "string" } } }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Created" }, "404": { "description": "User or inventory not found" } }
+      },
+      "delete": {
+        "summary": "Remove users from write access",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "required": ["userIds"], "properties": { "userIds": { "type": "array", "items": { "type": "string" } } } }
+            }
+          }
+        },
+        "responses": { "204": { "description": "No content" }, "400": { "description": "userIds required" } }
+      }
+    },
+    "/api/inventories/{id}/fields": {
+      "get": {
+        "summary": "List custom fields",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "summary": "Save custom fields",
+        "description": "Max 3 per type: SINGLE_LINE_TEXT, MULTI_LINE_TEXT, NUMBER, LINK, BOOLEAN.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fields": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["type", "title"],
+                      "properties": {
+                        "type": { "type": "string", "enum": ["SINGLE_LINE_TEXT", "MULTI_LINE_TEXT", "NUMBER", "LINK", "BOOLEAN"] },
+                        "title": { "type": "string" },
+                        "description": { "type": "string", "nullable": true },
+                        "showInTable": { "type": "boolean" },
+                        "orderIndex": { "type": "integer" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "OK" }, "400": { "description": "Validation" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/inventories/{id}/stats": {
+      "get": {
+        "summary": "Inventory statistics",
+        "description": "Items count, numeric aggregates (min/max/avg), top text values.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/users/search": {
+      "get": {
+        "summary": "Search users (autocomplete)",
+        "parameters": [{ "name": "query", "in": "query", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" } } }
+      }
+    }
+  }
+}

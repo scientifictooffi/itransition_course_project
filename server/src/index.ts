@@ -2,7 +2,9 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import swaggerUi from "swagger-ui-express";
 import { prisma } from "./prisma";
+import openApiSpec from "./openapi.json";
 
 dotenv.config();
 
@@ -10,6 +12,8 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
 
 const PORT = Number(process.env.PORT) || 4000;
 
@@ -28,6 +32,37 @@ interface CustomIdElementPayload {
   orderIndex?: number;
   fixedText?: string | null;
   numberWidth?: number | null;
+}
+
+type InventoryFieldType = "SINGLE_LINE_TEXT" | "MULTI_LINE_TEXT" | "NUMBER" | "LINK" | "BOOLEAN";
+
+interface InventoryFieldPayload {
+  id?: string;
+  type: InventoryFieldType;
+  title: string;
+  description?: string | null;
+  showInTable?: boolean;
+  orderIndex?: number;
+}
+
+interface NumericFieldStats {
+  fieldId: string;
+  title: string;
+  count: number;
+  min: number;
+  max: number;
+  avg: number;
+}
+
+interface TextFieldValueStats {
+  value: string;
+  count: number;
+}
+
+interface TextFieldStats {
+  fieldId: string;
+  title: string;
+  topValues: TextFieldValueStats[];
 }
 
 async function generateCustomIdForInventory(inventoryId: string): Promise<string> {
@@ -747,6 +782,263 @@ app.delete("/api/inventories/:id/access", async (req: Request, res: Response) =>
     // eslint-disable-next-line no-console
     console.error("Error in DELETE /api/inventories/:id/access", error);
     res.status(500).json({ message: "Failed to remove access" });
+  }
+});
+
+app.get("/api/inventories/:id/fields", async (req: Request, res: Response) => {
+  try {
+    const inventoryId = req.params.id;
+
+    const inventory = await prisma.inventory.findUnique({
+      where: { id: inventoryId },
+      select: { id: true },
+    });
+
+    if (!inventory) {
+      return res.status(404).json({ message: "Inventory not found" });
+    }
+
+    const fields = await prisma.inventoryField.findMany({
+      where: { inventoryId },
+      orderBy: { orderIndex: "asc" },
+    });
+
+    res.json({
+      fields: fields.map((field) => ({
+        id: field.id,
+        type: field.type,
+        title: field.title,
+        description: field.description,
+        showInTable: field.showInTable,
+        orderIndex: field.orderIndex,
+      })),
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/inventories/:id/fields", error);
+    res.status(500).json({ message: "Failed to load fields" });
+  }
+});
+
+app.put("/api/inventories/:id/fields", async (req: Request, res: Response) => {
+  try {
+    const inventoryId = req.params.id;
+    const { fields } = (req.body ?? {}) as { fields?: InventoryFieldPayload[] };
+
+    const inventory = await prisma.inventory.findUnique({
+      where: { id: inventoryId },
+      select: { id: true },
+    });
+
+    if (!inventory) {
+      return res.status(404).json({ message: "Inventory not found" });
+    }
+
+    if (!fields || fields.length === 0) {
+      await prisma.inventoryField.deleteMany({ where: { inventoryId } });
+      return res.json({ fields: [] });
+    }
+
+    const limits: Record<InventoryFieldType, number> = {
+      SINGLE_LINE_TEXT: 3,
+      MULTI_LINE_TEXT: 3,
+      NUMBER: 3,
+      LINK: 3,
+      BOOLEAN: 3,
+    };
+
+    const counters: Record<InventoryFieldType, number> = {
+      SINGLE_LINE_TEXT: 0,
+      MULTI_LINE_TEXT: 0,
+      NUMBER: 0,
+      LINK: 0,
+      BOOLEAN: 0,
+    };
+
+    for (const field of fields) {
+      const type = field.type;
+      if (!limits[type]) {
+        return res.status(400).json({ message: `Unsupported field type: ${type}` });
+      }
+      if (!field.title || !field.title.trim()) {
+        return res.status(400).json({ message: "Field title is required for all fields." });
+      }
+      counters[type] += 1;
+      if (counters[type] > limits[type]) {
+        return res.status(400).json({
+          message: `Too many fields of type ${type}. Maximum is ${limits[type]}.`,
+        });
+      }
+    }
+
+    const sanitized = fields.map((field, index) => ({
+      inventoryId,
+      type: field.type,
+      title: field.title.trim(),
+      description: field.description && field.description.trim().length > 0
+        ? field.description.trim()
+        : null,
+      showInTable: Boolean(field.showInTable),
+      orderIndex: typeof field.orderIndex === "number" ? field.orderIndex : index,
+    }));
+
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.inventoryField.findMany({
+        where: { inventoryId },
+        select: { id: true },
+      });
+
+      if (existing.length > 0) {
+        await tx.itemFieldValue.deleteMany({
+          where: { fieldId: { in: existing.map((field) => field.id) } },
+        });
+        await tx.inventoryField.deleteMany({ where: { inventoryId } });
+      }
+
+      await tx.inventoryField.createMany({
+        data: sanitized,
+      });
+    });
+
+    const updatedFields = await prisma.inventoryField.findMany({
+      where: { inventoryId },
+      orderBy: { orderIndex: "asc" },
+    });
+
+    res.json({
+      fields: updatedFields.map((field) => ({
+        id: field.id,
+        type: field.type,
+        title: field.title,
+        description: field.description,
+        showInTable: field.showInTable,
+        orderIndex: field.orderIndex,
+      })),
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in PUT /api/inventories/:id/fields", error);
+    res.status(500).json({ message: "Failed to save fields" });
+  }
+});
+
+app.get("/api/inventories/:id/stats", async (req: Request, res: Response) => {
+  try {
+    const inventoryId = req.params.id;
+
+    const inventory = await prisma.inventory.findUnique({
+      where: { id: inventoryId },
+      select: { id: true },
+    });
+
+    if (!inventory) {
+      return res.status(404).json({ message: "Inventory not found" });
+    }
+
+    const [itemsCount, numericValues, textValues] = await Promise.all([
+      prisma.item.count({ where: { inventoryId } }),
+      prisma.itemFieldValue.findMany({
+        where: {
+          item: { inventoryId },
+          field: { type: "NUMBER" },
+          valueNumber: { not: null },
+        },
+        include: {
+          field: true,
+        },
+      }),
+      prisma.itemFieldValue.findMany({
+        where: {
+          item: { inventoryId },
+          field: { type: { in: ["SINGLE_LINE_TEXT", "MULTI_LINE_TEXT"] } },
+          valueString: { not: null },
+        },
+        include: {
+          field: true,
+        },
+      }),
+    ]);
+
+    const numericByField = new Map<string, NumericFieldStats>();
+
+    for (const value of numericValues) {
+      const fieldId = value.fieldId;
+      const fieldTitle = value.field.title;
+      const num = value.valueNumber as number;
+
+      let stats = numericByField.get(fieldId);
+      if (!stats) {
+        stats = {
+          fieldId,
+          title: fieldTitle,
+          count: 0,
+          min: num,
+          max: num,
+          avg: 0,
+        };
+        numericByField.set(fieldId, stats);
+      }
+
+      stats.count += 1;
+      if (num < stats.min) stats.min = num;
+      if (num > stats.max) stats.max = num;
+      stats.avg += num;
+    }
+
+    for (const stats of numericByField.values()) {
+      if (stats.count > 0) {
+        stats.avg = stats.avg / stats.count;
+      }
+    }
+
+    const textByField = new Map<string, { title: string; counts: Map<string, number> }>();
+
+    for (const value of textValues) {
+      const fieldId = value.fieldId;
+      const fieldTitle = value.field.title;
+      const text = (value.valueString ?? "").trim();
+      if (!text) continue;
+
+      let entry = textByField.get(fieldId);
+      if (!entry) {
+        entry = { title: fieldTitle, counts: new Map<string, number>() };
+        textByField.set(fieldId, entry);
+      }
+
+      const previous = entry.counts.get(text) ?? 0;
+      entry.counts.set(text, previous + 1);
+    }
+
+    const numericFields: NumericFieldStats[] = Array.from(numericByField.values()).sort((a, b) =>
+      a.title.localeCompare(b.title),
+    );
+
+    const textFields: TextFieldStats[] = Array.from(textByField.entries()).map(
+      ([fieldId, entry]) => {
+        const topValues: TextFieldValueStats[] = Array.from(entry.counts.entries())
+          .map(([value, count]) => ({ value, count }))
+          .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
+          .slice(0, 5);
+
+        return {
+          fieldId,
+          title: entry.title,
+          topValues,
+        };
+      },
+    );
+
+    textFields.sort((a, b) => a.title.localeCompare(b.title));
+
+    res.json({
+      itemsCount,
+      numericFields,
+      textFields,
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/inventories/:id/stats", error);
+    res.status(500).json({ message: "Failed to load statistics" });
   }
 });
 

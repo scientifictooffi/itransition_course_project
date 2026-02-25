@@ -4,6 +4,8 @@ import { Nav } from "react-bootstrap";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CustomIdTab } from "../components/CustomIdTab";
+import { FieldsTab } from "../components/FieldsTab";
+import { StatsTab } from "../components/StatsTab";
 
 type InventoryTab =
   | "items"
@@ -785,23 +787,9 @@ export const InventoryPage: React.FC = () => {
           </div>
         )}
 
-        {activeTab === "fields" && (
-          <div className="bg-white rounded-3 shadow-sm p-3">
-            <h2 className="h5 mb-3">Fields</h2>
-            <p className="text-muted mb-0">
-              Here will be fixed and custom fields configuration with drag-and-drop ordering.
-            </p>
-          </div>
-        )}
+        {activeTab === "fields" && <FieldsTab inventoryId={inventoryId} />}
 
-        {activeTab === "stats" && (
-          <div className="bg-white rounded-3 shadow-sm p-3">
-            <h2 className="h5 mb-3">Statistics</h2>
-            <p className="text-muted mb-0">
-              Here will be item counts, numeric averages/ranges and most frequent string values.
-            </p>
-          </div>
-        )}
+        {activeTab === "stats" && <StatsTab inventoryId={inventoryId} />}
       </div>
     </div>
   );
