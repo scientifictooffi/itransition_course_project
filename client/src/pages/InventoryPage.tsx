@@ -43,6 +43,7 @@ interface InventoryDetails {
   isPublic: boolean;
   version: number;
   tags: string[];
+  imageUrl: string | null;
 }
 
 interface AccessUser {
@@ -69,6 +70,7 @@ export const InventoryPage: React.FC = () => {
   const [settingsDescription, setSettingsDescription] = useState<string>("");
   const [settingsCategory, setSettingsCategory] = useState<InventoryCategory>("EQUIPMENT");
   const [settingsIsPublic, setSettingsIsPublic] = useState<boolean>(false);
+  const [settingsImageUrl, setSettingsImageUrl] = useState<string>("");
   const [settingsTags, setSettingsTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState<string>("");
   const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
@@ -111,6 +113,7 @@ export const InventoryPage: React.FC = () => {
       setSettingsDescription(data.description);
       setSettingsCategory(data.category);
       setSettingsIsPublic(data.isPublic);
+      setSettingsImageUrl(data.imageUrl ?? "");
       setSettingsTags(data.tags);
       setSettingsDirty(false);
     } catch (err) {
@@ -368,6 +371,7 @@ export const InventoryPage: React.FC = () => {
           category: settingsCategory,
           isPublic: settingsIsPublic,
           tags: settingsTags,
+          imageUrl: settingsImageUrl || null,
           version: inventoryDetails.version,
         }),
       });
@@ -379,7 +383,8 @@ export const InventoryPage: React.FC = () => {
         setSettingsDescription(payload.current.description);
         setSettingsCategory(payload.current.category);
         setSettingsIsPublic(payload.current.isPublic);
-         setSettingsTags(payload.current.tags);
+        setSettingsImageUrl(payload.current.imageUrl ?? "");
+        setSettingsTags(payload.current.tags);
         setSettingsDirty(false);
         setSettingsConflict("Settings updated by someone else. Latest version loaded.");
         return;
@@ -391,6 +396,7 @@ export const InventoryPage: React.FC = () => {
 
       const data: InventoryDetails = await response.json();
       setInventoryDetails(data);
+      setSettingsImageUrl(data.imageUrl ?? "");
       setSettingsTags(data.tags);
       setSettingsDirty(false);
       setSettingsLastSavedAt(new Date().toLocaleTimeString());
@@ -809,6 +815,38 @@ export const InventoryPage: React.FC = () => {
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{settingsDescription}</ReactMarkdown>
                   ) : (
                     <span className="text-muted">Nothing to preview yet.</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="col-md-6">
+                <label className="form-label">Image URL</label>
+                <input
+                  type="url"
+                  className="form-control"
+                  value={settingsImageUrl}
+                  onChange={(event) => {
+                    setSettingsImageUrl(event.target.value);
+                    setSettingsDirty(true);
+                  }}
+                  placeholder="https://... (image hosted in cloud storage)"
+                />
+                <div className="form-text">
+                  Paste a link to an image stored in cloud storage (e.g. Cloudinary, imgur, etc.).
+                  The file is not uploaded to the app server or database.
+                </div>
+              </div>
+              <div className="col-md-6">
+                <label className="form-label">Image preview</label>
+                <div className="border rounded-3 p-2 bg-light d-flex justify-content-center align-items-center" style={{ minHeight: "140px" }}>
+                  {settingsImageUrl ? (
+                    <img
+                      src={settingsImageUrl}
+                      alt={settingsTitle || "Inventory image"}
+                      style={{ maxWidth: "100%", maxHeight: "120px", objectFit: "contain" }}
+                    />
+                  ) : (
+                    <span className="text-muted small">No image selected.</span>
                   )}
                 </div>
               </div>

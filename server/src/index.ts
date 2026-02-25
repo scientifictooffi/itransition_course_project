@@ -322,6 +322,7 @@ app.get("/api/inventories/:id", async (req: Request, res: Response) => {
       category: inventory.category,
       isPublic: inventory.isPublic,
       version: inventory.version,
+      imageUrl: inventory.imageUrl,
       tags: inventory.tags.map((t) => t.tag.name),
     });
   } catch (error) {
@@ -334,13 +335,14 @@ app.get("/api/inventories/:id", async (req: Request, res: Response) => {
 app.patch("/api/inventories/:id", async (req: Request, res: Response) => {
   try {
     const inventoryId = req.params.id;
-    const { title, description, category, isPublic, version, tags } = req.body as {
+    const { title, description, category, isPublic, version, tags, imageUrl } = req.body as {
       title?: string;
       description?: string;
       category?: "EQUIPMENT" | "FURNITURE" | "BOOK" | "OTHER";
       isPublic?: boolean;
       version: number;
       tags?: string[];
+      imageUrl?: string | null;
     };
 
     const current = await prisma.inventory.findUnique({
@@ -362,6 +364,7 @@ app.patch("/api/inventories/:id", async (req: Request, res: Response) => {
           category: current.category,
           isPublic: current.isPublic,
           version: current.version,
+          imageUrl: current.imageUrl,
           tags: current.tags.map((t) => t.tag.name),
         },
       });
@@ -385,6 +388,7 @@ app.patch("/api/inventories/:id", async (req: Request, res: Response) => {
           description: description ?? current.description,
           category: category ?? current.category,
           isPublic: typeof isPublic === "boolean" ? isPublic : current.isPublic,
+          imageUrl: typeof imageUrl === "string" ? imageUrl : current.imageUrl,
           version: {
             increment: 1,
           },
@@ -457,6 +461,7 @@ app.patch("/api/inventories/:id", async (req: Request, res: Response) => {
       category: updated.category,
       isPublic: updated.isPublic,
       version: updated.version,
+      imageUrl: updated.imageUrl,
       tags: updated.tags.map((t) => t.tag.name),
     });
   } catch (error) {
