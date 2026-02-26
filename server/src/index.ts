@@ -2,6 +2,8 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import swaggerUi from "swagger-ui-express";
 import { prisma } from "./prisma";
 import openApiSpec from "./openapi.json";
@@ -16,6 +18,12 @@ app.use(express.json());
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
 
 const PORT = Number(process.env.PORT) || 4000;
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+
+interface AuthTokenPayload {
+  userId: string;
+  role: "USER" | "ADMIN";
+}
 
 type CustomIdElementType =
   | "FIXED_TEXT"
@@ -138,8 +146,152 @@ async function generateCustomIdForInventory(inventoryId: string): Promise<string
   return parts.join("");
 }
 
+function generateToken(userId: string, role: "USER" | "ADMIN"): string {
+  const payload: AuthTokenPayload = { userId, role };
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+}
+
+function getTokenFromRequest(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return null;
+  const [scheme, token] = authHeader.split(" ");
+  if (scheme !== "Bearer" || !token) return null;
+  return token;
+}
+
+async function getCurrentUser(req: Request) {
+  const token = getTokenFromRequest(req);
+  if (!token) return null;
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as AuthTokenPayload;
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+    });
+    if (!user) return null;
+    return user;
+  } catch {
+    return null;
+  }
+}
+
 app.get("/api/health", (req: Request, res: Response) => {
   res.json({ status: "ok" });
+});
+
+app.post("/api/auth/register", async (req: Request, res: Response) => {
+  try {
+    const { email, password, name } = (req.body ?? {}) as {
+      email?: string;
+      password?: string;
+      name?: string;
+    };
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required." });
+    }
+
+    if (password.length < 6) {
+      return res
+        .status(400)
+        .json({ message: "Password should be at least 6 characters long." });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      return res.status(409).json({ message: "User with this email already exists." });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        email,
+        name,
+        passwordHash,
+      },
+    });
+
+    const token = generateToken(user.id, user.role);
+
+    res.status(201).json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        isBlocked: user.isBlocked,
+      },
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/auth/register", error);
+    res.status(500).json({ message: "Failed to register user" });
+  }
+});
+
+app.post("/api/auth/login", async (req: Request, res: Response) => {
+  try {
+    const { email, password } = (req.body ?? {}) as {
+      email?: string;
+      password?: string;
+    };
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required." });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user || !user.passwordHash) {
+      return res.status(401).json({ message: "Invalid email or password." });
+    }
+
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) {
+      return res.status(401).json({ message: "Invalid email or password." });
+    }
+
+    const token = generateToken(user.id, user.role);
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        isBlocked: user.isBlocked,
+      },
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/auth/login", error);
+    res.status(500).json({ message: "Failed to login" });
+  }
+});
+
+app.get("/api/auth/me", async (req: Request, res: Response) => {
+  try {
+    const user = await getCurrentUser(req);
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    res.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      isBlocked: user.isBlocked,
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/auth/me", error);
+    res.status(500).json({ message: "Failed to get current user" });
+  }
 });
 
 app.get("/api/home", async (req: Request, res: Response) => {

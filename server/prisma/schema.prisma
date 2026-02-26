@@ -43,6 +43,7 @@ model User {
   email     String   @unique
   name      String?
   avatarUrl String?
+  passwordHash String?
   isBlocked Boolean  @default(false)
   role      UserRole @default(USER)
   createdAt DateTime @default(now())
