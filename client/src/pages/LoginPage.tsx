@@ -51,6 +51,8 @@ export const LoginPage: React.FC = () => {
       }
 
       setInfo(mode === "login" ? "Logged in successfully." : "Registered successfully.");
+      // Простое решение: перезагрузить приложение, чтобы App перечитал authUser
+      window.location.href = "/";
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(err);

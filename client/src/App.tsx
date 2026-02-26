@@ -13,6 +13,14 @@ import { SearchResultsPage } from "./pages/SearchResultsPage";
 type Theme = "light" | "dark";
 type Language = "en" | "ru";
 
+interface AuthUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: "USER" | "ADMIN";
+  isBlocked: boolean;
+}
+
 const App: React.FC = () => {
   const navigate = useNavigate();
   const [theme, setTheme] = useState<Theme>(() => {
@@ -26,6 +34,17 @@ const App: React.FC = () => {
     return stored === "ru" || stored === "en" ? stored : "en";
   });
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem("authUser");
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as AuthUser;
+      return parsed && parsed.email ? parsed : null;
+    } catch {
+      return null;
+    }
+  });
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -38,6 +57,13 @@ const App: React.FC = () => {
 
   const handleLanguageChange = (value: Language) => {
     setLanguage(value);
+  };
+
+  const handleLogout = () => {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem("authToken");
+    window.localStorage.removeItem("authUser");
+    setCurrentUser(null);
   };
 
   useEffect(() => {
@@ -90,11 +116,24 @@ const App: React.FC = () => {
             </button>
           </Link>
 
-          <Link to="/login">
-            <button type="button" className="app-header__auth-button">
-              {language === "en" ? "Sign in" : "Войти"}
-            </button>
-          </Link>
+          {currentUser ? (
+            <>
+              <span className="me-2 small text-muted">{currentUser.email}</span>
+              <button
+                type="button"
+                className="app-header__auth-button"
+                onClick={handleLogout}
+              >
+                {language === "en" ? "Logout" : "Выйти"}
+              </button>
+            </>
+          ) : (
+            <Link to="/login">
+              <button type="button" className="app-header__auth-button">
+                {language === "en" ? "Sign in" : "Войти"}
+              </button>
+            </Link>
+          )}
         </div>
       </header>
 

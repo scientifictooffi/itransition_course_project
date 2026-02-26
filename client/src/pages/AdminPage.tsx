@@ -25,7 +25,10 @@ export const AdminPage: React.FC = () => {
       setError(null);
       setSelectedIds(new Set());
 
-      const response = await fetch(`${apiBase}/api/admin/users`);
+      const token = window.localStorage.getItem("authToken");
+      const response = await fetch(`${apiBase}/api/admin/users`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!response.ok) {
         throw new Error(`Failed to load users: ${response.status}`);
       }
@@ -62,10 +65,12 @@ export const AdminPage: React.FC = () => {
     if (selectedIds.size === 0) return;
     try {
       setError(null);
+      const token = window.localStorage.getItem("authToken");
       const response = await fetch(`${apiBase}${path}`, {
         method,
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ userIds: Array.from(selectedIds) }),
       });

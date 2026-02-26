@@ -180,7 +180,10 @@ export const InventoryPage: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`${apiBase}/api/inventories/${inventoryId}/items`);
+      const token = window.localStorage.getItem("authToken");
+      const response = await fetch(`${apiBase}/api/inventories/${inventoryId}/items`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!response.ok) {
         throw new Error(`Failed to load items: ${response.status}`);
       }
@@ -246,10 +249,12 @@ export const InventoryPage: React.FC = () => {
     if (!inventoryId) return;
     try {
       setError(null);
+      const token = window.localStorage.getItem("authToken");
       const response = await fetch(`${apiBase}/api/inventories/${inventoryId}/items`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({}),
       });
@@ -284,10 +289,12 @@ export const InventoryPage: React.FC = () => {
     if (selectedItemIds.size === 0) return;
     try {
       setError(null);
+      const token = window.localStorage.getItem("authToken");
       const response = await fetch(`${apiBase}/api/items/likes`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ itemIds: Array.from(selectedItemIds) }),
       });
@@ -308,10 +315,12 @@ export const InventoryPage: React.FC = () => {
     if (selectedItemIds.size === 0) return;
     try {
       setError(null);
+      const token = window.localStorage.getItem("authToken");
       const response = await fetch(`${apiBase}/api/items/likes`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ itemIds: Array.from(selectedItemIds) }),
       });
@@ -332,10 +341,12 @@ export const InventoryPage: React.FC = () => {
     if (!inventoryId || !newPostContent.trim()) return;
     try {
       setDiscussionError(null);
+      const token = window.localStorage.getItem("authToken");
       const response = await fetch(`${apiBase}/api/inventories/${inventoryId}/discussion`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ content: newPostContent }),
       });
@@ -360,10 +371,12 @@ export const InventoryPage: React.FC = () => {
       setSettingsError(null);
       setSettingsConflict(null);
 
+      const token = window.localStorage.getItem("authToken");
       const response = await fetch(`${apiBase}/api/inventories/${inventoryId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           title: settingsTitle,
@@ -447,10 +460,12 @@ export const InventoryPage: React.FC = () => {
     if (!inventoryId) return;
     try {
       setAccessError(null);
+      const token = window.localStorage.getItem("authToken");
       const response = await fetch(`${apiBase}/api/inventories/${inventoryId}/access`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ userId: user.id }),
       });
@@ -473,10 +488,12 @@ export const InventoryPage: React.FC = () => {
     if (!inventoryId || accessSelectedIds.size === 0) return;
     try {
       setAccessError(null);
+      const token = window.localStorage.getItem("authToken");
       const response = await fetch(`${apiBase}/api/inventories/${inventoryId}/access`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ userIds: Array.from(accessSelectedIds) }),
       });

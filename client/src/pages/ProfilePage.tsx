@@ -17,16 +17,28 @@ export const ProfilePage: React.FC = () => {
   const [newDescription, setNewDescription] = useState<string>("");
 
   const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
-  const demoEmail = "demo@example.com";
+
+  const getCurrentEmail = (): string => {
+    if (typeof window === "undefined") return "demo@example.com";
+    const raw = window.localStorage.getItem("authUser");
+    if (!raw) return "demo@example.com";
+    try {
+      const parsed = JSON.parse(raw) as { email?: string };
+      return parsed.email ?? "demo@example.com";
+    } catch {
+      return "demo@example.com";
+    }
+  };
 
   const loadProfile = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(
-        `${apiBase}/api/profile?userEmail=${encodeURIComponent(demoEmail)}`,
-      );
+      const token = window.localStorage.getItem("authToken");
+      const response = await fetch(`${apiBase}/api/profile`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to load profile: ${response.status}`);
@@ -58,17 +70,18 @@ export const ProfilePage: React.FC = () => {
     try {
       setError(null);
 
+      const token = window.localStorage.getItem("authToken");
       const response = await fetch(`${apiBase}/api/inventories`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           title: newTitle.trim(),
           description: newDescription.trim(),
           category: "EQUIPMENT",
           isPublic: false,
-          ownerEmail: demoEmail,
         }),
       });
 

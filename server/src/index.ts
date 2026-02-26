@@ -174,6 +174,29 @@ async function getCurrentUser(req: Request) {
   }
 }
 
+async function requireUser(req: Request, res: Response) {
+  const user = await getCurrentUser(req);
+  if (!user) {
+    res.status(401).json({ message: "Authentication required." });
+    return null;
+  }
+  if (user.isBlocked) {
+    res.status(403).json({ message: "User is blocked." });
+    return null;
+  }
+  return user;
+}
+
+async function requireAdmin(req: Request, res: Response) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  if (user.role !== "ADMIN") {
+    res.status(403).json({ message: "Admin role required." });
+    return null;
+  }
+  return user;
+}
+
 app.get("/api/health", (req: Request, res: Response) => {
   res.json({ status: "ok" });
 });
@@ -354,10 +377,11 @@ app.get("/api/home", async (req: Request, res: Response) => {
 
 app.get("/api/profile", async (req: Request, res: Response) => {
   try {
-    const email = (req.query.userEmail as string) || "demo@example.com";
+    const user = await requireUser(req, res);
+    if (!user) return;
 
-    const user = await prisma.user.findUnique({
-      where: { email },
+    const fullUser = await prisma.user.findUnique({
+      where: { id: user.id },
       include: {
         ownedInventories: {
           include: {
@@ -380,20 +404,20 @@ app.get("/api/profile", async (req: Request, res: Response) => {
       },
     });
 
-    if (!user) {
+    if (!fullUser) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const owned = user.ownedInventories.map((inventory) => ({
+    const owned = fullUser.ownedInventories.map((inventory) => ({
       id: inventory.id,
       name: inventory.title,
       description: inventory.description ?? "",
-      ownerName: user.name ?? user.email,
+      ownerName: fullUser.name ?? fullUser.email,
       itemsCount: inventory._count.items,
       tags: inventory.tags.map((t) => t.tag.name),
     }));
 
-    const writable = user.writeAccess.map((access) => ({
+    const writable = fullUser.writeAccess.map((access) => ({
       id: access.inventory.id,
       name: access.inventory.title,
       description: access.inventory.description ?? "",
@@ -412,23 +436,18 @@ app.get("/api/profile", async (req: Request, res: Response) => {
 
 app.post("/api/inventories", async (req: Request, res: Response) => {
   try {
-    const { title, description, category, isPublic, ownerEmail } = req.body as {
+    const { title, description, category, isPublic } = req.body as {
       title: string;
       description?: string;
       category: "EQUIPMENT" | "FURNITURE" | "BOOK" | "OTHER";
       isPublic?: boolean;
-      ownerEmail?: string;
     };
 
-    const email = ownerEmail || "demo@example.com";
+    const user = await requireUser(req, res);
+    if (!user) return;
 
     if (!title || !category) {
       return res.status(400).json({ message: "Title and category are required." });
-    }
-
-    const owner = await prisma.user.findUnique({ where: { email } });
-    if (!owner) {
-      return res.status(404).json({ message: "Owner user not found." });
     }
 
     const inventory = await prisma.inventory.create({
@@ -437,7 +456,7 @@ app.post("/api/inventories", async (req: Request, res: Response) => {
         description,
         category,
         isPublic: Boolean(isPublic),
-        ownerId: owner.id,
+        ownerId: user.id,
       },
     });
 
@@ -636,12 +655,7 @@ app.get("/api/inventories/:id/items", async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Inventory not found" });
     }
 
-    const email = (req.query.userEmail as string | undefined) || "demo@example.com";
-
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
+    const user = await getCurrentUser(req);
 
     const [items, userLikes] = await Promise.all([
       prisma.item.findMany({
@@ -692,18 +706,27 @@ app.post("/api/inventories/:id/items", async (req: Request, res: Response) => {
 
     const inventory = await prisma.inventory.findUnique({
       where: { id: inventoryId },
-      select: { id: true },
+      include: {
+        owner: true,
+        writeAccess: true,
+      },
     });
 
     if (!inventory) {
       return res.status(404).json({ message: "Inventory not found" });
     }
 
-    const email = createdByEmail || "demo@example.com";
+    const user = await requireUser(req, res);
+    if (!user) return;
 
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    const canWrite =
+      user.role === "ADMIN" ||
+      inventory.ownerId === user.id ||
+      inventory.isPublic ||
+      inventory.writeAccess.some((wa) => wa.userId === user.id);
+
+    if (!canWrite) {
+      return res.status(403).json({ message: "No permission to add items to this inventory." });
     }
 
     try {
@@ -1113,12 +1136,8 @@ app.post("/api/inventories/:id/discussion", async (req: Request, res: Response) 
       return res.status(404).json({ message: "Inventory not found" });
     }
 
-    const email = authorEmail || "demo@example.com";
-
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    const user = await requireUser(req, res);
+    if (!user) return;
 
     const post = await prisma.discussionPost.create({
       data: {
@@ -1603,16 +1622,8 @@ app.post("/api/items/likes", async (req: Request, res: Response) => {
       return res.status(400).json({ message: "itemIds are required" });
     }
 
-    const email = userEmail || "demo@example.com";
-
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    const user = await requireUser(req, res);
+    if (!user) return;
 
     await prisma.itemLike.createMany({
       data: itemIds.map((itemId) => ({
@@ -1638,16 +1649,8 @@ app.delete("/api/items/likes", async (req: Request, res: Response) => {
       return res.status(400).json({ message: "itemIds are required" });
     }
 
-    const email = userEmail || "demo@example.com";
-
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    const user = await requireUser(req, res);
+    if (!user) return;
 
     await prisma.itemLike.deleteMany({
       where: {
@@ -1698,6 +1701,8 @@ app.get("/api/tags/search", async (req: Request, res: Response) => {
 
 app.get("/api/admin/users", async (req: Request, res: Response) => {
   try {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
     const users = await prisma.user.findMany({
       orderBy: {
         createdAt: "desc",
@@ -1727,6 +1732,8 @@ interface AdminUsersPayload {
 
 app.post("/api/admin/users/block", async (req: Request, res: Response) => {
   try {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
     const { userIds }: AdminUsersPayload = req.body ?? {};
 
     if (!userIds || userIds.length === 0) {
@@ -1748,6 +1755,8 @@ app.post("/api/admin/users/block", async (req: Request, res: Response) => {
 
 app.post("/api/admin/users/unblock", async (req: Request, res: Response) => {
   try {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
     const { userIds }: AdminUsersPayload = req.body ?? {};
 
     if (!userIds || userIds.length === 0) {
@@ -1769,6 +1778,8 @@ app.post("/api/admin/users/unblock", async (req: Request, res: Response) => {
 
 app.post("/api/admin/users/make-admin", async (req: Request, res: Response) => {
   try {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
     const { userIds }: AdminUsersPayload = req.body ?? {};
 
     if (!userIds || userIds.length === 0) {
@@ -1790,6 +1801,8 @@ app.post("/api/admin/users/make-admin", async (req: Request, res: Response) => {
 
 app.post("/api/admin/users/remove-admin", async (req: Request, res: Response) => {
   try {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
     const { userIds }: AdminUsersPayload = req.body ?? {};
 
     if (!userIds || userIds.length === 0) {
@@ -1811,6 +1824,8 @@ app.post("/api/admin/users/remove-admin", async (req: Request, res: Response) =>
 
 app.delete("/api/admin/users", async (req: Request, res: Response) => {
   try {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
     const { userIds }: AdminUsersPayload = req.body ?? {};
 
     if (!userIds || userIds.length === 0) {
