@@ -33,7 +33,7 @@ const FIELD_TYPE_LABELS: Record<InventoryFieldType, string> = {
 
 const MAX_PER_TYPE = 3;
 
-export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
+export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId, canEdit }) => {
   const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
   const [fields, setFields] = useState<InventoryField[]>([]);
@@ -87,7 +87,7 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
   const canAddMore = FIELD_TYPE_ORDER.some((type) => typeCounts[type] < MAX_PER_TYPE);
 
   const handleAddField = () => {
-    if (!canAddMore) {
+    if (!canEdit || !canAddMore) {
       return;
     }
     const nextType =
@@ -110,6 +110,7 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
     key: K,
     value: InventoryField[K],
   ) => {
+    if (!canEdit) return;
     setFields((prev) =>
       prev.map((field, i) => {
         if (i !== index) return field;
@@ -119,6 +120,7 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
   };
 
   const handleMoveField = (index: number, direction: -1 | 1) => {
+    if (!canEdit) return;
     setFields((prev) => {
       const next = [...prev];
       const newIndex = index + direction;
@@ -132,13 +134,14 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
   };
 
   const handleRemoveField = (index: number) => {
+    if (!canEdit) return;
     setFields((prev) =>
       prev.filter((_, i) => i !== index).map((field, idx) => ({ ...field, orderIndex: idx })),
     );
   };
 
   const handleSave = async () => {
-    if (!inventoryId) return;
+    if (!inventoryId || !canEdit) return;
     try {
       setSaving(true);
       setError(null);
@@ -153,10 +156,12 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
         })),
       };
 
+      const token = window.localStorage.getItem("authToken");
       const response = await fetch(`${apiBase}/api/inventories/${inventoryId}/fields`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(payload),
       });
@@ -218,7 +223,7 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
             type="button"
             className="btn btn-sm btn-outline-primary"
             onClick={handleAddField}
-            disabled={!canAddMore}
+            disabled={!canEdit || !canAddMore}
           >
             Add field
           </button>
@@ -226,7 +231,7 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
             type="button"
             className="btn btn-sm btn-primary"
             onClick={handleSave}
-            disabled={saving}
+            disabled={!canEdit || saving}
           >
             {saving ? "Saving..." : "Save fields"}
           </button>
@@ -268,6 +273,7 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
                     onChange={(event) =>
                       handleChangeField(index, "type", event.target.value as InventoryFieldType)
                     }
+                    disabled={!canEdit}
                   >
                     {FIELD_TYPE_ORDER.map((type) => {
                       const isLimitReached =
@@ -289,6 +295,7 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
                       handleChangeField(index, "title", event.target.value)
                     }
                     placeholder="Field title"
+                    disabled={!canEdit}
                   />
                 </td>
                 <td>
@@ -300,6 +307,7 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
                       handleChangeField(index, "description", event.target.value)
                     }
                     placeholder="Tooltip or hint (optional)"
+                    disabled={!canEdit}
                   />
                 </td>
                 <td>
@@ -311,6 +319,7 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
                       onChange={(event) =>
                         handleChangeField(index, "showInTable", event.target.checked)
                       }
+                      disabled={!canEdit}
                     />
                   </div>
                 </td>
@@ -320,7 +329,7 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
                       type="button"
                       className="btn btn-outline-secondary"
                       onClick={() => handleMoveField(index, -1)}
-                      disabled={index === 0}
+                      disabled={!canEdit || index === 0}
                     >
                       ↑
                     </button>
@@ -328,7 +337,7 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
                       type="button"
                       className="btn btn-outline-secondary"
                       onClick={() => handleMoveField(index, 1)}
-                      disabled={index === fields.length - 1}
+                      disabled={!canEdit || index === fields.length - 1}
                     >
                       ↓
                     </button>
@@ -336,6 +345,7 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId }) => {
                       type="button"
                       className="btn btn-outline-danger"
                       onClick={() => handleRemoveField(index)}
+                      disabled={!canEdit}
                     >
                       Remove
                     </button>

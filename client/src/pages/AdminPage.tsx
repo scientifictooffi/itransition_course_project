@@ -19,6 +19,18 @@ export const AdminPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  const [isAdmin] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const raw = window.localStorage.getItem("authUser");
+    if (!raw) return false;
+    try {
+      const parsed = JSON.parse(raw) as { role?: UserRole };
+      return parsed.role === "ADMIN";
+    } catch {
+      return false;
+    }
+  });
+
   const loadUsers = async () => {
     try {
       setLoading(true);
@@ -45,9 +57,10 @@ export const AdminPage: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!isAdmin) return;
     void loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isAdmin]);
 
   const toggleSelection = (userId: string) => {
     setSelectedIds((prev) => {
@@ -86,6 +99,15 @@ export const AdminPage: React.FC = () => {
       setError("Admin action failed.");
     }
   };
+
+  if (!isAdmin) {
+    return (
+      <div className="container py-4">
+        <h1 className="h4 mb-2">Admin panel</h1>
+        <p className="text-muted mb-0">Access denied. Admin role is required.</p>
+      </div>
+    );
+  }
 
   const createdSorted = [...users].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),

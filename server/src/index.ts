@@ -479,12 +479,29 @@ app.get("/api/inventories/:id", async (req: Request, res: Response) => {
       where: { id: inventoryId },
       include: {
         tags: { include: { tag: true } },
+        writeAccess: {
+          select: {
+            userId: true,
+          },
+        },
       },
     });
 
     if (!inventory) {
       return res.status(404).json({ message: "Inventory not found" });
     }
+
+    const user = await getCurrentUser(req);
+    const isAdmin = user?.role === "ADMIN";
+    const isOwner = user ? inventory.ownerId === user.id : false;
+    const hasExplicitWrite =
+      !!user && inventory.writeAccess.some((access) => access.userId === user.id);
+
+    const canEditItems =
+      !!user && (isAdmin || isOwner || inventory.isPublic || hasExplicitWrite);
+    const canEditSettings = !!user && (isAdmin || isOwner);
+    const canManageAccess = canEditSettings;
+    const canEditFields = canEditSettings;
 
     res.json({
       id: inventory.id,
@@ -495,6 +512,10 @@ app.get("/api/inventories/:id", async (req: Request, res: Response) => {
       version: inventory.version,
       imageUrl: inventory.imageUrl,
       tags: inventory.tags.map((t) => t.tag.name),
+      canEditItems,
+      canEditSettings,
+      canManageAccess,
+      canEditFields,
     });
   } catch (error) {
     // eslint-disable-next-line no-console
@@ -523,6 +544,14 @@ app.patch("/api/inventories/:id", async (req: Request, res: Response) => {
 
     if (!current) {
       return res.status(404).json({ message: "Inventory not found" });
+    }
+
+    const user = await requireUser(req, res);
+    if (!user) return;
+
+    const canEditSettings = user.role === "ADMIN" || current.ownerId === user.id;
+    if (!canEditSettings) {
+      return res.status(403).json({ message: "No permission to edit this inventory." });
     }
 
     if (version !== current.version) {
@@ -1006,11 +1035,17 @@ app.put("/api/inventories/:id/custom-id", async (req: Request, res: Response) =>
 
     const inventory = await prisma.inventory.findUnique({
       where: { id: inventoryId },
-      select: { id: true },
+      select: { id: true, ownerId: true },
     });
 
     if (!inventory) {
       return res.status(404).json({ message: "Inventory not found" });
+    }
+
+    const user = await requireUser(req, res);
+    if (!user) return;
+    if (user.role !== "ADMIN" && inventory.ownerId !== user.id) {
+      return res.status(403).json({ message: "No permission to edit custom ID format." });
     }
 
     if (!elements || elements.length === 0) {
@@ -1211,11 +1246,17 @@ app.post("/api/inventories/:id/access", async (req: Request, res: Response) => {
 
     const inventory = await prisma.inventory.findUnique({
       where: { id: inventoryId },
-      select: { id: true },
+      select: { id: true, ownerId: true },
     });
 
     if (!inventory) {
       return res.status(404).json({ message: "Inventory not found" });
+    }
+
+    const currentUser = await requireUser(req, res);
+    if (!currentUser) return;
+    if (currentUser.role !== "ADMIN" && inventory.ownerId !== currentUser.id) {
+      return res.status(403).json({ message: "No permission to manage access for this inventory." });
     }
 
     let user = null;
@@ -1262,6 +1303,21 @@ app.delete("/api/inventories/:id/access", async (req: Request, res: Response) =>
 
     if (!userIds || userIds.length === 0) {
       return res.status(400).json({ message: "userIds are required" });
+    }
+
+    const inventory = await prisma.inventory.findUnique({
+      where: { id: inventoryId },
+      select: { id: true, ownerId: true },
+    });
+
+    if (!inventory) {
+      return res.status(404).json({ message: "Inventory not found" });
+    }
+
+    const currentUser = await requireUser(req, res);
+    if (!currentUser) return;
+    if (currentUser.role !== "ADMIN" && inventory.ownerId !== currentUser.id) {
+      return res.status(403).json({ message: "No permission to manage access for this inventory." });
     }
 
     await prisma.inventoryWriteAccess.deleteMany({
@@ -1321,11 +1377,17 @@ app.put("/api/inventories/:id/fields", async (req: Request, res: Response) => {
 
     const inventory = await prisma.inventory.findUnique({
       where: { id: inventoryId },
-      select: { id: true },
+      select: { id: true, ownerId: true },
     });
 
     if (!inventory) {
       return res.status(404).json({ message: "Inventory not found" });
+    }
+
+    const user = await requireUser(req, res);
+    if (!user) return;
+    if (user.role !== "ADMIN" && inventory.ownerId !== user.id) {
+      return res.status(403).json({ message: "No permission to edit fields for this inventory." });
     }
 
     if (!fields || fields.length === 0) {

@@ -116,6 +116,14 @@ const App: React.FC = () => {
             </button>
           </Link>
 
+          {currentUser?.role === "ADMIN" && (
+            <Link to="/admin" className="me-2">
+              <button type="button" className="app-header__auth-button">
+                {language === "en" ? "Admin" : "Админ"}
+              </button>
+            </Link>
+          )}
+
           {currentUser ? (
             <>
               <span className="me-2 small text-muted">{currentUser.email}</span>

@@ -18,18 +18,6 @@ export const ProfilePage: React.FC = () => {
 
   const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
-  const getCurrentEmail = (): string => {
-    if (typeof window === "undefined") return "demo@example.com";
-    const raw = window.localStorage.getItem("authUser");
-    if (!raw) return "demo@example.com";
-    try {
-      const parsed = JSON.parse(raw) as { email?: string };
-      return parsed.email ?? "demo@example.com";
-    } catch {
-      return "demo@example.com";
-    }
-  };
-
   const loadProfile = async () => {
     try {
       setLoading(true);

@@ -44,6 +44,10 @@ interface InventoryDetails {
   version: number;
   tags: string[];
   imageUrl: string | null;
+  canEditItems: boolean;
+  canEditSettings: boolean;
+  canManageAccess: boolean;
+  canEditFields: boolean;
 }
 
 interface AccessUser {
@@ -89,6 +93,9 @@ export const InventoryPage: React.FC = () => {
   const [accessQuery, setAccessQuery] = useState<string>("");
   const [accessSuggestions, setAccessSuggestions] = useState<AccessUser[]>([]);
   const [accessSuggestionsLoading, setAccessSuggestionsLoading] = useState<boolean>(false);
+
+  const isAuthenticated =
+    typeof window !== "undefined" && !!window.localStorage.getItem("authToken");
 
   const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -599,14 +606,19 @@ export const InventoryPage: React.FC = () => {
               <span className="fw-semibold">Items</span>
               <div className="btn-toolbar gap-2">
                 {/* Toolbar: Add item, like/unlike selected, без кнопок в строках */}
-                <button type="button" className="btn btn-sm btn-primary" onClick={handleAddItem}>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={handleAddItem}
+                  disabled={!inventoryDetails?.canEditItems}
+                >
                   Add item
                 </button>
                 <button
                   type="button"
                   className="btn btn-sm btn-outline-primary"
                   onClick={handleLikeSelected}
-                  disabled={selectedItemIds.size === 0}
+                  disabled={!isAuthenticated || selectedItemIds.size === 0}
                 >
                   Like selected
                 </button>
@@ -614,7 +626,7 @@ export const InventoryPage: React.FC = () => {
                   type="button"
                   className="btn btn-sm btn-outline-secondary"
                   onClick={handleUnlikeSelected}
-                  disabled={selectedItemIds.size === 0}
+                  disabled={!isAuthenticated || selectedItemIds.size === 0}
                 >
                   Unlike selected
                 </button>
@@ -627,7 +639,9 @@ export const InventoryPage: React.FC = () => {
                       setEditingItemId(first);
                     }
                   }}
-                  disabled={selectedItemIds.size !== 1}
+                  disabled={
+                    !inventoryDetails?.canEditItems || selectedItemIds.size !== 1
+                  }
                 >
                   Edit selected
                 </button>
@@ -710,7 +724,7 @@ export const InventoryPage: React.FC = () => {
                   type="button"
                   className="btn btn-sm btn-primary"
                   onClick={handleAddPost}
-                  disabled={!newPostContent.trim()}
+                  disabled={!isAuthenticated || !newPostContent.trim()}
                 >
                   Add post
                 </button>
@@ -776,6 +790,7 @@ export const InventoryPage: React.FC = () => {
                     setSettingsTitle(event.target.value);
                     setSettingsDirty(true);
                   }}
+                  disabled={!inventoryDetails?.canEditSettings}
                 />
               </div>
               <div className="col-md-3">
@@ -787,6 +802,7 @@ export const InventoryPage: React.FC = () => {
                     setSettingsCategory(event.target.value as InventoryCategory);
                     setSettingsDirty(true);
                   }}
+                  disabled={!inventoryDetails?.canEditSettings}
                 >
                   <option value="EQUIPMENT">Equipment</option>
                   <option value="FURNITURE">Furniture</option>
@@ -805,6 +821,7 @@ export const InventoryPage: React.FC = () => {
                       setSettingsIsPublic(event.target.checked);
                       setSettingsDirty(true);
                     }}
+                    disabled={!inventoryDetails?.canEditSettings}
                   />
                   <label className="form-check-label" htmlFor="inventory-is-public">
                     Public inventory (all authenticated users can add items)
@@ -823,6 +840,7 @@ export const InventoryPage: React.FC = () => {
                     setSettingsDirty(true);
                   }}
                   placeholder="Describe this inventory..."
+                  disabled={!inventoryDetails?.canEditSettings}
                 />
               </div>
               <div className="col-md-6">
@@ -847,6 +865,7 @@ export const InventoryPage: React.FC = () => {
                     setSettingsDirty(true);
                   }}
                   placeholder="https://... (image hosted in cloud storage)"
+                  disabled={!inventoryDetails?.canEditSettings}
                 />
                 <div className="form-text">
                   Paste a link to an image stored in cloud storage (e.g. Cloudinary, imgur, etc.).
@@ -880,6 +899,7 @@ export const InventoryPage: React.FC = () => {
                         aria-label={`Remove tag ${tag}`}
                         onClick={() => handleRemoveTag(tag)}
                         style={{ fontSize: "0.5rem" }}
+                        disabled={!inventoryDetails?.canEditSettings}
                       />
                     </span>
                   ))}
@@ -903,6 +923,7 @@ export const InventoryPage: React.FC = () => {
                     }
                   }}
                   placeholder="Add a tag and press Enter..."
+                  disabled={!inventoryDetails?.canEditSettings}
                 />
                 {tagSuggestionsLoading && (
                   <p className="text-muted small mt-1 mb-0">Searching tags...</p>
@@ -939,7 +960,12 @@ export const InventoryPage: React.FC = () => {
           </div>
         )}
 
-        {activeTab === "customId" && <CustomIdTab inventoryId={inventoryId} />}
+        {activeTab === "customId" && (
+          <CustomIdTab
+            inventoryId={inventoryId}
+            canEdit={Boolean(inventoryDetails?.canEditFields)}
+          />
+        )}
 
         {activeTab === "access" && (
           <div className="bg-white rounded-3 shadow-sm p-3">
@@ -967,6 +993,7 @@ export const InventoryPage: React.FC = () => {
                     void loadAccessSuggestions(value);
                   }}
                   placeholder="Start typing to search users..."
+                  disabled={!inventoryDetails?.canManageAccess}
                 />
                 {accessSuggestionsLoading && (
                   <p className="text-muted small mt-1 mb-0">Searching users...</p>
@@ -979,6 +1006,7 @@ export const InventoryPage: React.FC = () => {
                         className="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
                         role="button"
                         onClick={() => void handleAddAccessUser(user)}
+                        aria-disabled={!inventoryDetails?.canManageAccess}
                       >
                         <span>
                           {user.name || user.email}
@@ -1008,6 +1036,7 @@ export const InventoryPage: React.FC = () => {
                   onChange={(event) =>
                     setAccessSortBy(event.target.value === "email" ? "email" : "name")
                   }
+                  disabled={!inventoryDetails?.canManageAccess}
                 >
                   <option value="name">Sort by name</option>
                   <option value="email">Sort by email</option>
@@ -1016,7 +1045,7 @@ export const InventoryPage: React.FC = () => {
                   type="button"
                   className="btn btn-sm btn-outline-danger"
                   onClick={handleRemoveSelectedAccess}
-                  disabled={accessSelectedIds.size === 0}
+                  disabled={!inventoryDetails?.canManageAccess || accessSelectedIds.size === 0}
                 >
                   Remove selected
                 </button>
@@ -1064,7 +1093,12 @@ export const InventoryPage: React.FC = () => {
           </div>
         )}
 
-        {activeTab === "fields" && <FieldsTab inventoryId={inventoryId} />}
+        {activeTab === "fields" && (
+          <FieldsTab
+            inventoryId={inventoryId}
+            canEdit={Boolean(inventoryDetails?.canEditFields)}
+          />
+        )}
 
         {activeTab === "stats" && <StatsTab inventoryId={inventoryId} />}
       </div>

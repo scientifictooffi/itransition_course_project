@@ -20,9 +20,10 @@ interface CustomIdElement {
 
 interface CustomIdTabProps {
   inventoryId: string;
+  canEdit: boolean;
 }
 
-export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId }) => {
+export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId, canEdit }) => {
   const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
   const [elements, setElements] = useState<CustomIdElement[]>([]);
@@ -86,6 +87,7 @@ export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId }) => {
   }, [inventoryId]);
 
   const handleAddElement = () => {
+    if (!canEdit) return;
     setElements((prev) => [
       ...prev,
       {
@@ -102,6 +104,7 @@ export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId }) => {
     key: K,
     value: CustomIdElement[K],
   ) => {
+    if (!canEdit) return;
     setElements((prev) =>
       prev.map((element, i) => {
         if (i !== index) return element;
@@ -136,6 +139,7 @@ export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId }) => {
   };
 
   const handleMoveElement = (index: number, direction: -1 | 1) => {
+    if (!canEdit) return;
     setElements((prev) => {
       const next = [...prev];
       const newIndex = index + direction;
@@ -149,13 +153,14 @@ export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId }) => {
   };
 
   const handleRemoveElement = (index: number) => {
+    if (!canEdit) return;
     setElements((prev) =>
       prev.filter((_, i) => i !== index).map((element, idx) => ({ ...element, orderIndex: idx })),
     );
   };
 
   const handleSave = async () => {
-    if (!inventoryId) return;
+    if (!inventoryId || !canEdit) return;
     try {
       setSaving(true);
       setError(null);
@@ -172,10 +177,12 @@ export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId }) => {
         })),
       };
 
+      const token = window.localStorage.getItem("authToken");
       const response = await fetch(`${apiBase}/api/inventories/${inventoryId}/custom-id`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(payload),
       });
@@ -221,14 +228,19 @@ export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId }) => {
           >
             Reset
           </button>
-          <button type="button" className="btn btn-sm btn-outline-primary" onClick={handleAddElement}>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-primary"
+            onClick={handleAddElement}
+            disabled={!canEdit}
+          >
             Add element
           </button>
           <button
             type="button"
             className="btn btn-sm btn-primary"
             onClick={handleSave}
-            disabled={saving}
+            disabled={!canEdit || saving}
           >
             {saving ? "Saving..." : "Save format"}
           </button>
@@ -264,6 +276,7 @@ export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId }) => {
                     onChange={(event) =>
                       handleChangeElement(index, "type", event.target.value as CustomIdElementType)
                     }
+                    disabled={!canEdit}
                   >
                     <option value="FIXED_TEXT">Fixed text</option>
                     <option value="RANDOM_20_BITS">Random 20-bit number</option>
@@ -285,6 +298,7 @@ export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId }) => {
                         handleChangeElement(index, "fixedText", event.target.value)
                       }
                       placeholder="Fixed prefix, e.g. INV-"
+                      disabled={!canEdit}
                     />
                   )}
                   {(element.type === "RANDOM_6_DIGITS" ||
@@ -305,6 +319,7 @@ export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId }) => {
                             event.target.value ? Number(event.target.value) : null,
                           )
                         }
+                        disabled={!canEdit}
                       />
                     </div>
                   )}
@@ -321,7 +336,7 @@ export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId }) => {
                       type="button"
                       className="btn btn-outline-secondary"
                       onClick={() => handleMoveElement(index, -1)}
-                      disabled={index === 0}
+                      disabled={!canEdit || index === 0}
                     >
                       ↑
                     </button>
@@ -329,7 +344,7 @@ export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId }) => {
                       type="button"
                       className="btn btn-outline-secondary"
                       onClick={() => handleMoveElement(index, 1)}
-                      disabled={index === elements.length - 1}
+                      disabled={!canEdit || index === elements.length - 1}
                     >
                       ↓
                     </button>
@@ -337,6 +352,7 @@ export const CustomIdTab: React.FC<CustomIdTabProps> = ({ inventoryId }) => {
                       type="button"
                       className="btn btn-outline-danger"
                       onClick={() => handleRemoveElement(index)}
+                      disabled={!canEdit}
                     >
                       Remove
                     </button>
