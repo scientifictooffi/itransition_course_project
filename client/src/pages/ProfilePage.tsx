@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useState } from "react";
+import type { FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { InventoryTable } from "../components/InventoryTable";
 import type { InventorySummary } from "../types/inventory";
 

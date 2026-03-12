@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useState } from "react";
+import type { FormEvent } from "react";
+import { useEffect, useState } from "react";
 
 export const LoginPage: React.FC = () => {
   const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";

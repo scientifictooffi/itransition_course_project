@@ -13,6 +13,7 @@ interface InventoryField {
 
 interface FieldsTabProps {
   inventoryId: string;
+  canEdit: boolean;
 }
 
 const FIELD_TYPE_ORDER: InventoryFieldType[] = [
