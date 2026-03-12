@@ -192,7 +192,7 @@ export const FieldsTab: React.FC<FieldsTabProps> = ({ inventoryId, canEdit }) =>
     <div className="bg-white rounded-3 shadow-sm p-3">
       <h2 className="h5 mb-3">Fields</h2>
       <p className="text-muted mb-2">
-        Configure additional fields for items in this inventory. Fixed fields like ID, created by
+        Configure additional fields for items in this inventory.22 Fixed fields like ID, created by
         and created at are always present and cannot be removed.
       </p>
 
