@@ -64,6 +64,7 @@ const App: React.FC = () => {
     window.localStorage.removeItem("authToken");
     window.localStorage.removeItem("authUser");
     setCurrentUser(null);
+    navigate("/login");
   };
 
   useEffect(() => {

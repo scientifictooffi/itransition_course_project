@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 export const LoginPage: React.FC = () => {
   const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -10,6 +10,62 @@ export const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const tokenFromUrl = url.searchParams.get("token");
+    const errorFromUrl = url.searchParams.get("error");
+
+    if (errorFromUrl) {
+      setError(
+        errorFromUrl === "account_blocked"
+          ? "Your account has been blocked by an administrator."
+          : `Social login failed: ${errorFromUrl}`,
+      );
+      url.searchParams.delete("error");
+      window.history.replaceState({}, document.title, url.pathname + url.search);
+      return;
+    }
+
+    if (tokenFromUrl) {
+      const handleSocialLogin = async () => {
+        try {
+          setLoading(true);
+          setError(null);
+          setInfo(null);
+
+          const response = await fetch(`${apiBase}/api/auth/me`, {
+            headers: {
+              Authorization: `Bearer ${tokenFromUrl}`,
+            },
+          });
+
+          if (!response.ok) {
+            setError("Failed to fetch user info for social login.");
+            return;
+          }
+
+          const user = await response.json();
+          window.localStorage.setItem("authToken", tokenFromUrl);
+          window.localStorage.setItem("authUser", JSON.stringify(user));
+
+          url.searchParams.delete("token");
+          window.history.replaceState({}, document.title, url.pathname + url.search);
+
+          window.location.href = "/";
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error(err);
+          setError("Social login processing failed.");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      void handleSocialLogin();
+    }
+  }, [apiBase]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -51,7 +107,6 @@ export const LoginPage: React.FC = () => {
       }
 
       setInfo(mode === "login" ? "Logged in successfully." : "Registered successfully.");
-      // Простое решение: перезагрузить приложение, чтобы App перечитал authUser
       window.location.href = "/";
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -99,6 +154,56 @@ export const LoginPage: React.FC = () => {
             {info}
           </p>
         )}
+
+        <div className="mb-3">
+          <p className="text-muted small mb-2">Or sign in with a social account:</p>
+          <div className="d-flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn btn-outline-danger btn-sm"
+              onClick={async () => {
+                try {
+                  setError(null);
+                  const response = await fetch(`${apiBase}/api/auth/google/url`);
+                  if (!response.ok) {
+                    throw new Error(`Failed to start Google login: ${response.status}`);
+                  }
+                  const data = (await response.json()) as { url: string };
+                  window.location.href = data.url;
+                } catch (err) {
+                  // eslint-disable-next-line no-console
+                  console.error(err);
+                  setError("Failed to start Google login.");
+                }
+              }}
+              disabled={loading}
+            >
+              Continue with Google
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline-dark btn-sm"
+              onClick={async () => {
+                try {
+                  setError(null);
+                  const response = await fetch(`${apiBase}/api/auth/github/url`);
+                  if (!response.ok) {
+                    throw new Error(`Failed to start GitHub login: ${response.status}`);
+                  }
+                  const data = (await response.json()) as { url: string };
+                  window.location.href = data.url;
+                } catch (err) {
+                  // eslint-disable-next-line no-console
+                  console.error(err);
+                  setError("Failed to start GitHub login.");
+                }
+              }}
+              disabled={loading}
+            >
+              Continue with GitHub
+            </button>
+          </div>
+        </div>
 
         <form className="row g-3" onSubmit={handleSubmit}>
           {mode === "register" && (

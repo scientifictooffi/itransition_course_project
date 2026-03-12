@@ -44,6 +44,7 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({ itemId, onClose, o
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<string | null>(null);
+  const [previewField, setPreviewField] = useState<ItemFieldDto | null>(null);
 
   const loadItem = async () => {
     if (!itemId) return;
@@ -268,12 +269,23 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({ itemId, onClose, o
                     />
                   )}
                   {field.type === "LINK" && (
-                    <input
-                      type="url"
-                      className="form-control"
-                      value={field.valueLink ?? ""}
-                      onChange={(event) => handleFieldChange(index, event.target.value)}
-                    />
+                    <div className="input-group">
+                      <input
+                        type="url"
+                        className="form-control"
+                        value={field.valueLink ?? ""}
+                        onChange={(event) => handleFieldChange(index, event.target.value)}
+                        placeholder="https://..."
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        disabled={!field.valueLink}
+                        onClick={() => setPreviewField(field)}
+                      >
+                        Preview
+                      </button>
+                    </div>
                   )}
                   {field.type === "BOOLEAN" && (
                     <div className="form-check">
@@ -316,6 +328,60 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({ itemId, onClose, o
           </div>
         </div>
       </div>
+      {previewField && previewField.valueLink && (
+        <div className="modal d-block" tabIndex={-1} role="dialog">
+          <div className="modal-dialog modal-xl" role="document">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  Preview: {previewField.title}
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  aria-label="Close"
+                  onClick={() => setPreviewField(null)}
+                />
+              </div>
+              <div className="modal-body">
+                <p className="text-muted small">
+                  Document link:&nbsp;
+                  <a href={previewField.valueLink} target="_blank" rel="noreferrer">
+                    {previewField.valueLink}
+                  </a>
+                </p>
+                <div
+                  className="border rounded-3 bg-light d-flex justify-content-center align-items-center"
+                  style={{ minHeight: "300px" }}
+                >
+                  {/\.(png|jpe?g|gif|webp)$/i.test(previewField.valueLink) ? (
+                    <img
+                      src={previewField.valueLink}
+                      alt={previewField.title}
+                      style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+                    />
+                  ) : (
+                    <iframe
+                      src={previewField.valueLink}
+                      title={previewField.title}
+                      style={{ width: "100%", height: "400px", border: "none" }}
+                    />
+                  )}
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setPreviewField(null)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

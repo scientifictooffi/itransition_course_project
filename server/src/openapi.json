@@ -6,16 +6,33 @@
     "version": "1.0.0"
   },
   "servers": [{ "url": "http://localhost:4000", "description": "Local" }],
+  "tags": [
+    { "name": "Utility", "description": "Health and utility endpoints" },
+    { "name": "Auth", "description": "Authentication and current user" },
+    { "name": "Home", "description": "Home page data" },
+    { "name": "Profile", "description": "User profile and personal inventories" },
+    { "name": "Inventories", "description": "Inventories and their general settings" },
+    { "name": "Items", "description": "Inventory items and likes" },
+    { "name": "Custom ID", "description": "Inventory custom ID format and preview" },
+    { "name": "Discussion", "description": "Inventory discussion posts" },
+    { "name": "Access", "description": "Inventory access control" },
+    { "name": "Fields", "description": "Custom fields per inventory" },
+    { "name": "Stats", "description": "Inventory statistics and aggregations" },
+    { "name": "Search", "description": "Full-text search, users and tags" },
+    { "name": "Admin", "description": "Admin user management" }
+  ],
   "paths": {
     "/api/health": {
       "get": {
         "summary": "Health check",
+        "tags": ["Utility"],
         "responses": { "200": { "description": "OK" } }
       }
     },
     "/api/auth/register": {
       "post": {
         "summary": "Register new user",
+        "tags": ["Auth"],
         "requestBody": {
           "content": {
             "application/json": {
@@ -41,6 +58,7 @@
     "/api/auth/login": {
       "post": {
         "summary": "Login user",
+        "tags": ["Auth"],
         "requestBody": {
           "content": {
             "application/json": {
@@ -65,6 +83,7 @@
     "/api/auth/me": {
       "get": {
         "summary": "Get current user from JWT",
+        "tags": ["Auth"],
         "parameters": [
           {
             "name": "Authorization",
@@ -79,24 +98,116 @@
         }
       }
     },
+    "/api/auth/google/url": {
+      "get": {
+        "summary": "Get Google OAuth URL",
+        "description": "Returns the URL to start Google OAuth login flow.",
+        "tags": ["Auth"],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "url": { "type": "string", "format": "uri" }
+                  }
+                }
+              }
+            }
+          },
+          "500": { "description": "Google auth not configured" }
+        }
+      }
+    },
+    "/api/auth/google/callback": {
+      "get": {
+        "summary": "Google OAuth callback",
+        "description": "Callback endpoint for Google OAuth. Exchanges code for tokens, creates or updates user and redirects to the client application.",
+        "tags": ["Auth"],
+        "parameters": [
+          { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirects to client application" },
+          "400": { "description": "Invalid state or code" },
+          "500": { "description": "Server error during OAuth flow" }
+        }
+      }
+    },
+    "/api/auth/github/url": {
+      "get": {
+        "summary": "Get GitHub OAuth URL",
+        "description": "Returns the URL to start GitHub OAuth login flow.",
+        "tags": ["Auth"],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "url": { "type": "string", "format": "uri" }
+                  }
+                }
+              }
+            }
+          },
+          "500": { "description": "GitHub auth not configured" }
+        }
+      }
+    },
+    "/api/auth/github/callback": {
+      "get": {
+        "summary": "GitHub OAuth callback",
+        "description": "Callback endpoint for GitHub OAuth. Exchanges code for tokens, creates or updates user and redirects to the client application.",
+        "tags": ["Auth"],
+        "parameters": [
+          { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirects to client application" },
+          "400": { "description": "Invalid state or code" },
+          "500": { "description": "Server error during OAuth flow" }
+        }
+      }
+    },
     "/api/home": {
       "get": {
         "summary": "Home page data",
         "description": "Latest inventories, popular inventories, tags.",
+        "tags": ["Home"],
         "responses": { "200": { "description": "OK" }, "500": { "description": "Server error" } }
       }
     },
     "/api/profile": {
       "get": {
         "summary": "User profile",
-        "description": "Owned and writable inventories. Query: userEmail (optional).",
-        "parameters": [{ "name": "userEmail", "in": "query", "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "OK" }, "404": { "description": "User not found" } }
+        "description": "Owned and writable inventories for the currently authenticated user.",
+        "tags": ["Profile"],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "example": "Bearer eyJ..." }
+          }
+        ],
+        "responses": {
+          "200": { "description": "OK" },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "User not found" }
+        }
       }
     },
     "/api/inventories": {
       "post": {
         "summary": "Create inventory",
+        "tags": ["Inventories"],
         "requestBody": {
           "content": {
             "application/json": {
@@ -107,8 +218,7 @@
                   "title": { "type": "string" },
                   "description": { "type": "string" },
                   "category": { "type": "string", "enum": ["EQUIPMENT", "FURNITURE", "BOOK", "OTHER"] },
-                  "isPublic": { "type": "boolean" },
-                  "ownerEmail": { "type": "string" }
+                  "isPublic": { "type": "boolean" }
                 }
               }
             }
@@ -117,18 +227,20 @@
         "responses": {
           "201": { "description": "Created" },
           "400": { "description": "Bad request" },
-          "404": { "description": "Owner not found" }
+          "401": { "description": "Unauthorized" }
         }
       }
     },
     "/api/inventories/{id}": {
       "get": {
         "summary": "Get inventory details",
+        "tags": ["Inventories"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
       },
       "patch": {
         "summary": "Update inventory (optimistic locking)",
+        "tags": ["Inventories"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": {
           "content": {
@@ -142,6 +254,7 @@
                   "category": { "type": "string", "enum": ["EQUIPMENT", "FURNITURE", "BOOK", "OTHER"] },
                   "isPublic": { "type": "boolean" },
                   "tags": { "type": "array", "items": { "type": "string" } },
+                  "imageUrl": { "type": "string", "nullable": true },
                   "version": { "type": "integer" }
                 }
               }
@@ -158,15 +271,16 @@
     "/api/inventories/{id}/items": {
       "get": {
         "summary": "List items",
+        "tags": ["Items"],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "userEmail", "in": "query", "schema": { "type": "string" } }
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
         "responses": { "200": { "description": "OK" }, "404": { "description": "Inventory not found" } }
       },
       "post": {
         "summary": "Create item",
         "description": "Custom ID optional; generated from format if omitted.",
+        "tags": ["Items"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": {
           "content": {
@@ -174,8 +288,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "customId": { "type": "string" },
-                  "createdByEmail": { "type": "string" }
+                  "customId": { "type": "string" }
                 }
               }
             }
@@ -183,6 +296,8 @@
         },
         "responses": {
           "201": { "description": "Created" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden - no write access" },
           "404": { "description": "Not found" },
           "409": { "description": "Duplicate custom ID" }
         }
@@ -191,11 +306,13 @@
     "/api/inventories/{id}/custom-id": {
       "get": {
         "summary": "Get custom ID format elements",
+        "tags": ["Custom ID"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
       },
       "put": {
         "summary": "Save custom ID format",
+        "tags": ["Custom ID"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": {
           "content": {
@@ -238,6 +355,7 @@
     "/api/inventories/{id}/custom-id/preview": {
       "get": {
         "summary": "Preview generated custom ID",
+        "tags": ["Custom ID"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": {
           "200": {
@@ -258,11 +376,13 @@
     "/api/inventories/{id}/discussion": {
       "get": {
         "summary": "List discussion posts",
+        "tags": ["Discussion"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
       },
       "post": {
         "summary": "Add discussion post",
+        "tags": ["Discussion"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": {
           "content": {
@@ -271,8 +391,7 @@
                 "type": "object",
                 "required": ["content"],
                 "properties": {
-                  "content": { "type": "string" },
-                  "authorEmail": { "type": "string" }
+                  "content": { "type": "string" }
                 }
               }
             }
@@ -281,6 +400,7 @@
         "responses": {
           "201": { "description": "Created" },
           "400": { "description": "Content required" },
+          "401": { "description": "Unauthorized" },
           "404": { "description": "Not found" }
         }
       }
@@ -288,11 +408,13 @@
     "/api/inventories/{id}/access": {
       "get": {
         "summary": "Get write access list",
+        "tags": ["Access"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
       },
       "post": {
         "summary": "Add user to write access",
+        "tags": ["Access"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": {
           "content": {
@@ -309,11 +431,14 @@
         },
         "responses": {
           "201": { "description": "Created" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden - only owner or admin" },
           "404": { "description": "User or inventory not found" }
         }
       },
       "delete": {
         "summary": "Remove users from write access",
+        "tags": ["Access"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": {
           "content": {
@@ -330,19 +455,23 @@
         },
         "responses": {
           "204": { "description": "No content" },
-          "400": { "description": "userIds required" }
+          "400": { "description": "userIds required" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden - only owner or admin" }
         }
       }
     },
     "/api/inventories/{id}/fields": {
       "get": {
         "summary": "List custom fields",
+        "tags": ["Fields"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
       },
       "put": {
         "summary": "Save custom fields",
         "description": "Max 3 per type: SINGLE_LINE_TEXT, MULTI_LINE_TEXT, NUMBER, LINK, BOOLEAN.",
+        "tags": ["Fields"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": {
           "content": {
@@ -375,6 +504,8 @@
         "responses": {
           "200": { "description": "OK" },
           "400": { "description": "Validation" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden - only owner or admin" },
           "404": { "description": "Not found" }
         }
       }
@@ -383,13 +514,38 @@
       "get": {
         "summary": "Inventory statistics",
         "description": "Items count, numeric aggregates (min/max/avg), top text values.",
+        "tags": ["Stats"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/inventories/{id}/export": {
+      "get": {
+        "summary": "Export inventory items to CSV",
+        "description": "Exports all items of the inventory (fixed fields and custom fields) as a CSV file.",
+        "tags": ["Stats"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": {
+            "description": "CSV file",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": { "description": "Inventory not found" },
+          "500": { "description": "Export failed" }
+        }
       }
     },
     "/api/users/search": {
       "get": {
         "summary": "Search users (autocomplete)",
+        "tags": ["Search"],
         "parameters": [{ "name": "query", "in": "query", "schema": { "type": "string" } }],
         "responses": { "200": { "description": "OK" } }
       }
@@ -398,6 +554,7 @@
       "get": {
         "summary": "Search inventories",
         "description": "Search inventories by text and/or tag.",
+        "tags": ["Search"],
         "parameters": [
           { "name": "q", "in": "query", "schema": { "type": "string" } },
           { "name": "tag", "in": "query", "schema": { "type": "string" } }
@@ -408,6 +565,7 @@
     "/api/items/likes": {
       "post": {
         "summary": "Like items",
+        "tags": ["Items"],
         "requestBody": {
           "content": {
             "application/json": {
@@ -415,8 +573,7 @@
                 "type": "object",
                 "required": ["itemIds"],
                 "properties": {
-                  "itemIds": { "type": "array", "items": { "type": "string" } },
-                  "userEmail": { "type": "string" }
+                  "itemIds": { "type": "array", "items": { "type": "string" } }
                 }
               }
             }
@@ -425,11 +582,12 @@
         "responses": {
           "204": { "description": "No content" },
           "400": { "description": "itemIds required" },
-          "404": { "description": "User not found" }
+          "401": { "description": "Unauthorized" }
         }
       },
       "delete": {
         "summary": "Unlike items",
+        "tags": ["Items"],
         "requestBody": {
           "content": {
             "application/json": {
@@ -437,8 +595,7 @@
                 "type": "object",
                 "required": ["itemIds"],
                 "properties": {
-                  "itemIds": { "type": "array", "items": { "type": "string" } },
-                  "userEmail": { "type": "string" }
+                  "itemIds": { "type": "array", "items": { "type": "string" } }
                 }
               }
             }
@@ -447,13 +604,14 @@
         "responses": {
           "204": { "description": "No content" },
           "400": { "description": "itemIds required" },
-          "404": { "description": "User not found" }
+          "401": { "description": "Unauthorized" }
         }
       }
     },
     "/api/tags/search": {
       "get": {
         "summary": "Search tags for autocomplete",
+        "tags": ["Search"],
         "parameters": [{ "name": "q", "in": "query", "schema": { "type": "string" } }],
         "responses": { "200": { "description": "OK" } }
       }
@@ -461,11 +619,13 @@
     "/api/items/{id}": {
       "get": {
         "summary": "Get single item with custom fields",
+        "tags": ["Items"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
       },
       "patch": {
         "summary": "Update item (optimistic locking)",
+        "tags": ["Items"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": {
           "content": {
@@ -497,6 +657,8 @@
         },
         "responses": {
           "200": { "description": "OK" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden - no write access" },
           "404": { "description": "Not found" },
           "409": { "description": "Version conflict or duplicate custom ID" }
         }
@@ -505,10 +667,12 @@
     "/api/admin/users": {
       "get": {
         "summary": "List users for admin panel",
-        "responses": { "200": { "description": "OK" } }
+        "tags": ["Admin"],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" }, "403": { "description": "Forbidden - admin only" } }
       },
       "delete": {
         "summary": "Delete users",
+        "tags": ["Admin"],
         "requestBody": {
           "content": {
             "application/json": {
@@ -524,13 +688,16 @@
         },
         "responses": {
           "204": { "description": "No content" },
-          "400": { "description": "userIds required" }
+          "400": { "description": "userIds required" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden - admin only" }
         }
       }
     },
     "/api/admin/users/block": {
       "post": {
         "summary": "Block users",
+        "tags": ["Admin"],
         "requestBody": {
           "content": {
             "application/json": {
@@ -546,13 +713,16 @@
         },
         "responses": {
           "204": { "description": "No content" },
-          "400": { "description": "userIds required" }
+          "400": { "description": "userIds required" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden - admin only" }
         }
       }
     },
     "/api/admin/users/unblock": {
       "post": {
         "summary": "Unblock users",
+        "tags": ["Admin"],
         "requestBody": {
           "content": {
             "application/json": {
@@ -568,13 +738,16 @@
         },
         "responses": {
           "204": { "description": "No content" },
-          "400": { "description": "userIds required" }
+          "400": { "description": "userIds required" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden - admin only" }
         }
       }
     },
     "/api/admin/users/make-admin": {
       "post": {
         "summary": "Grant admin role",
+        "tags": ["Admin"],
         "requestBody": {
           "content": {
             "application/json": {
@@ -590,13 +763,16 @@
         },
         "responses": {
           "204": { "description": "No content" },
-          "400": { "description": "userIds required" }
+          "400": { "description": "userIds required" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden - admin only" }
         }
       }
     },
     "/api/admin/users/remove-admin": {
       "post": {
         "summary": "Revoke admin role",
+        "tags": ["Admin"],
         "requestBody": {
           "content": {
             "application/json": {
@@ -612,7 +788,9 @@
         },
         "responses": {
           "204": { "description": "No content" },
-          "400": { "description": "userIds required" }
+          "400": { "description": "userIds required" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden - admin only" }
         }
       }
     }

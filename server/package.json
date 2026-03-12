@@ -129,7 +129,8 @@
     "vary": "^1.1.2",
     "wrappy": "^1.0.2",
     "xtend": "^4.0.2",
-    "yn": "^3.1.1"
+    "yn": "^3.1.1",
+    "prisma": "^7.4.1"
   },
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
@@ -150,7 +151,6 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.3.0",
     "@types/swagger-ui-express": "^4.1.8",
-    "prisma": "^7.4.1",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
   }

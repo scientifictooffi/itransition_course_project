@@ -645,6 +645,37 @@ export const InventoryPage: React.FC = () => {
                 >
                   Edit selected
                 </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-success"
+                  onClick={async () => {
+                    if (!inventoryId) return;
+                    try {
+                      const response = await fetch(
+                        `${apiBase}/api/inventories/${inventoryId}/export`,
+                      );
+                      if (!response.ok) {
+                        throw new Error(`Failed to export: ${response.status}`);
+                      }
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const link = document.createElement("a");
+                      link.href = url;
+                      link.download = `inventory-${inventoryId}-items.csv`;
+                      document.body.appendChild(link);
+                      link.click();
+                      link.remove();
+                      window.URL.revokeObjectURL(url);
+                    } catch (exportError) {
+                      // eslint-disable-next-line no-console
+                      console.error(exportError);
+                      setError("Failed to export items.");
+                    }
+                  }}
+                  disabled={items.length === 0}
+                >
+                  Export CSV
+                </button>
               </div>
             </div>
 

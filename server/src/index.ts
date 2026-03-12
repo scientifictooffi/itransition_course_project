@@ -19,6 +19,15 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
 
 const PORT = Number(process.env.PORT) || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+const CLIENT_APP_URL = process.env.CLIENT_APP_URL || "http://localhost:5173";
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GOOGLE_REDIRECT_URI =
+  process.env.GOOGLE_REDIRECT_URI || "http://localhost:4000/api/auth/google/callback";
+const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
+const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
+const GITHUB_REDIRECT_URI =
+  process.env.GITHUB_REDIRECT_URI || "http://localhost:4000/api/auth/github/callback";
 
 interface AuthTokenPayload {
   userId: string;
@@ -159,6 +168,19 @@ function getTokenFromRequest(req: Request): string | null {
   return token;
 }
 
+function createOAuthState(provider: "google" | "github"): string {
+  return jwt.sign({ provider }, JWT_SECRET, { expiresIn: "10m" });
+}
+
+function verifyOAuthState(token: string, expectedProvider: "google" | "github"): boolean {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { provider?: string };
+    return decoded.provider === expectedProvider;
+  } catch {
+    return false;
+  }
+}
+
 async function getCurrentUser(req: Request) {
   const token = getTokenFromRequest(req);
   if (!token) return null;
@@ -272,6 +294,10 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Invalid email or password." });
     }
 
+    if (user.isBlocked) {
+      return res.status(403).json({ message: "User is blocked." });
+    }
+
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
       return res.status(401).json({ message: "Invalid email or password." });
@@ -314,6 +340,308 @@ app.get("/api/auth/me", async (req: Request, res: Response) => {
     // eslint-disable-next-line no-console
     console.error("Error in GET /api/auth/me", error);
     res.status(500).json({ message: "Failed to get current user" });
+  }
+});
+
+app.get("/api/auth/google/url", (req: Request, res: Response) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_REDIRECT_URI) {
+    return res.status(500).json({ message: "Google auth is not configured on the server." });
+  }
+
+  const state = createOAuthState("google");
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    response_type: "code",
+    scope: "openid email profile",
+    state,
+    access_type: "offline",
+    prompt: "consent",
+  });
+
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  res.json({ url });
+});
+
+app.get("/api/auth/google/callback", async (req: Request, res: Response) => {
+  try {
+    const code = req.query.code as string | undefined;
+    const state = req.query.state as string | undefined;
+
+    if (!code || !state || !verifyOAuthState(state, "google")) {
+      return res.status(400).send("Invalid Google OAuth state or code.");
+    }
+
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
+      return res.status(500).send("Google auth is not configured on the server.");
+    }
+
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: GOOGLE_REDIRECT_URI,
+        grant_type: "authorization_code",
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      // eslint-disable-next-line no-console
+      console.error("Google token exchange failed", await tokenResponse.text());
+      const redirectUrl = new URL(CLIENT_APP_URL);
+      redirectUrl.pathname = "/login";
+      redirectUrl.searchParams.set("error", "google_oauth_failed");
+      return res.redirect(redirectUrl.toString());
+    }
+
+    const tokenJson = (await tokenResponse.json()) as {
+      access_token?: string;
+      id_token?: string;
+    };
+
+    if (!tokenJson.access_token) {
+      const redirectUrl = new URL(CLIENT_APP_URL);
+      redirectUrl.pathname = "/login";
+      redirectUrl.searchParams.set("error", "google_oauth_no_access_token");
+      return res.redirect(redirectUrl.toString());
+    }
+
+    const userInfoResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+      headers: {
+        Authorization: `Bearer ${tokenJson.access_token}`,
+      },
+    });
+
+    if (!userInfoResponse.ok) {
+      // eslint-disable-next-line no-console
+      console.error("Google userinfo failed", await userInfoResponse.text());
+      const redirectUrl = new URL(CLIENT_APP_URL);
+      redirectUrl.pathname = "/login";
+      redirectUrl.searchParams.set("error", "google_userinfo_failed");
+      return res.redirect(redirectUrl.toString());
+    }
+
+    const userInfo = (await userInfoResponse.json()) as {
+      sub: string;
+      email?: string;
+      name?: string;
+      picture?: string;
+    };
+
+    const googleId = userInfo.sub;
+    const email = userInfo.email ?? `google_${googleId}@example.com`;
+    const name = userInfo.name ?? null;
+
+    const existing = await prisma.user.findUnique({ where: { email } });
+
+    if (existing && existing.isBlocked) {
+      const redirectUrl = new URL(CLIENT_APP_URL);
+      redirectUrl.pathname = "/login";
+      redirectUrl.searchParams.set("error", "account_blocked");
+      return res.redirect(redirectUrl.toString());
+    }
+
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: {
+        googleId,
+        name: name ?? undefined,
+        avatarUrl: userInfo.picture ?? undefined,
+      },
+      create: {
+        email,
+        name,
+        googleId,
+      },
+    });
+
+    if (user.isBlocked) {
+      const redirectUrl = new URL(CLIENT_APP_URL);
+      redirectUrl.pathname = "/login";
+      redirectUrl.searchParams.set("error", "account_blocked");
+      return res.redirect(redirectUrl.toString());
+    }
+
+    const token = generateToken(user.id, user.role);
+
+    const redirectUrl = new URL(CLIENT_APP_URL);
+    redirectUrl.pathname = "/login";
+    redirectUrl.searchParams.set("token", token);
+    res.redirect(redirectUrl.toString());
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/auth/google/callback", error);
+    const redirectUrl = new URL(CLIENT_APP_URL);
+    redirectUrl.pathname = "/login";
+    redirectUrl.searchParams.set("error", "google_oauth_exception");
+    res.redirect(redirectUrl.toString());
+  }
+});
+
+app.get("/api/auth/github/url", (req: Request, res: Response) => {
+  if (!GITHUB_CLIENT_ID || !GITHUB_REDIRECT_URI) {
+    return res.status(500).json({ message: "GitHub auth is not configured on the server." });
+  }
+
+  const state = createOAuthState("github");
+  const params = new URLSearchParams({
+    client_id: GITHUB_CLIENT_ID,
+    redirect_uri: GITHUB_REDIRECT_URI,
+    scope: "read:user user:email",
+    state,
+  });
+
+  const url = `https://github.com/login/oauth/authorize?${params.toString()}`;
+  res.json({ url });
+});
+
+app.get("/api/auth/github/callback", async (req: Request, res: Response) => {
+  try {
+    const code = req.query.code as string | undefined;
+    const state = req.query.state as string | undefined;
+
+    if (!code || !state || !verifyOAuthState(state, "github")) {
+      return res.status(400).send("Invalid GitHub OAuth state or code.");
+    }
+
+    if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET || !GITHUB_REDIRECT_URI) {
+      return res.status(500).send("GitHub auth is not configured on the server.");
+    }
+
+    const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        client_id: GITHUB_CLIENT_ID,
+        client_secret: GITHUB_CLIENT_SECRET,
+        code,
+        redirect_uri: GITHUB_REDIRECT_URI,
+        state,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      // eslint-disable-next-line no-console
+      console.error("GitHub token exchange failed", await tokenResponse.text());
+      const redirectUrl = new URL(CLIENT_APP_URL);
+      redirectUrl.pathname = "/login";
+      redirectUrl.searchParams.set("error", "github_oauth_failed");
+      return res.redirect(redirectUrl.toString());
+    }
+
+    const tokenJson = (await tokenResponse.json()) as {
+      access_token?: string;
+      token_type?: string;
+      scope?: string;
+    };
+
+    if (!tokenJson.access_token) {
+      const redirectUrl = new URL(CLIENT_APP_URL);
+      redirectUrl.pathname = "/login";
+      redirectUrl.searchParams.set("error", "github_oauth_no_access_token");
+      return res.redirect(redirectUrl.toString());
+    }
+
+    const userResponse = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${tokenJson.access_token}`,
+        Accept: "application/vnd.github+json",
+      },
+    });
+
+    if (!userResponse.ok) {
+      // eslint-disable-next-line no-console
+      console.error("GitHub userinfo failed", await userResponse.text());
+      const redirectUrl = new URL(CLIENT_APP_URL);
+      redirectUrl.pathname = "/login";
+      redirectUrl.searchParams.set("error", "github_userinfo_failed");
+      return res.redirect(redirectUrl.toString());
+    }
+
+    const githubUser = (await userResponse.json()) as {
+      id: number;
+      login: string;
+      name?: string | null;
+      avatar_url?: string | null;
+      email?: string | null;
+    };
+
+    let email = githubUser.email ?? null;
+
+    if (!email) {
+      const emailsResponse = await fetch("https://api.github.com/user/emails", {
+        headers: {
+          Authorization: `Bearer ${tokenJson.access_token}`,
+          Accept: "application/vnd.github+json",
+        },
+      });
+
+      if (emailsResponse.ok) {
+        const emailsJson = (await emailsResponse.json()) as Array<{
+          email: string;
+          primary?: boolean;
+          verified?: boolean;
+        }>;
+        const primary = emailsJson.find((e) => e.primary) ?? emailsJson[0];
+        email = primary?.email ?? null;
+      }
+    }
+
+    const githubId = String(githubUser.id);
+    const finalEmail = email ?? `github_${githubId}@example.com`;
+    const name = githubUser.name ?? githubUser.login ?? null;
+
+    const existing = await prisma.user.findUnique({ where: { email: finalEmail } });
+
+    if (existing && existing.isBlocked) {
+      const redirectUrl = new URL(CLIENT_APP_URL);
+      redirectUrl.pathname = "/login";
+      redirectUrl.searchParams.set("error", "account_blocked");
+      return res.redirect(redirectUrl.toString());
+    }
+
+    const user = await prisma.user.upsert({
+      where: { email: finalEmail },
+      update: {
+        githubId,
+        name: name ?? undefined,
+        avatarUrl: githubUser.avatar_url ?? undefined,
+      },
+      create: {
+        email: finalEmail,
+        name,
+        githubId,
+      },
+    });
+
+    if (user.isBlocked) {
+      const redirectUrl = new URL(CLIENT_APP_URL);
+      redirectUrl.pathname = "/login";
+      redirectUrl.searchParams.set("error", "account_blocked");
+      return res.redirect(redirectUrl.toString());
+    }
+
+    const token = generateToken(user.id, user.role);
+
+    const redirectUrl = new URL(CLIENT_APP_URL);
+    redirectUrl.pathname = "/login";
+    redirectUrl.searchParams.set("token", token);
+    res.redirect(redirectUrl.toString());
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/auth/github/callback", error);
+    const redirectUrl = new URL(CLIENT_APP_URL);
+    redirectUrl.pathname = "/login";
+    redirectUrl.searchParams.set("error", "github_oauth_exception");
+    res.redirect(redirectUrl.toString());
   }
 });
 
@@ -1595,6 +1923,93 @@ app.get("/api/inventories/:id/stats", async (req: Request, res: Response) => {
     // eslint-disable-next-line no-console
     console.error("Error in GET /api/inventories/:id/stats", error);
     res.status(500).json({ message: "Failed to load statistics" });
+  }
+});
+
+app.get("/api/inventories/:id/export", async (req: Request, res: Response) => {
+  try {
+    const inventoryId = req.params.id;
+
+    const inventory = await prisma.inventory.findUnique({
+      where: { id: inventoryId },
+      select: { id: true, title: true },
+    });
+
+    if (!inventory) {
+      return res.status(404).json({ message: "Inventory not found" });
+    }
+
+    const [fields, items] = await Promise.all([
+      prisma.inventoryField.findMany({
+        where: { inventoryId },
+        orderBy: { orderIndex: "asc" },
+      }),
+      prisma.item.findMany({
+        where: { inventoryId },
+        orderBy: { createdAt: "asc" },
+        include: {
+          createdBy: { select: { name: true, email: true } },
+          fieldValues: true,
+        },
+      }),
+    ]);
+
+    const header: string[] = ["Internal ID", "Custom ID", "Created by", "Created at"];
+    for (const field of fields) {
+      header.push(field.title);
+    }
+
+    const rows: string[][] = [header];
+
+    for (const item of items) {
+      const createdByName = item.createdBy.name ?? item.createdBy.email;
+      const baseRow: string[] = [
+        item.id,
+        item.customId,
+        createdByName,
+        item.createdAt.toISOString(),
+      ];
+
+      const valuesByField = new Map<string, string>();
+      for (const value of item.fieldValues) {
+        const str =
+          value.valueString ??
+          (value.valueNumber !== null && value.valueNumber !== undefined
+            ? String(value.valueNumber)
+            : value.valueBoolean !== null && value.valueBoolean !== undefined
+            ? value.valueBoolean
+              ? "true"
+              : "false"
+            : value.valueLink ?? "");
+        valuesByField.set(value.fieldId, str);
+      }
+
+      for (const field of fields) {
+        baseRow.push(valuesByField.get(field.id) ?? "");
+      }
+
+      rows.push(baseRow);
+    }
+
+    const escapeCell = (cell: string) => {
+      if (cell.includes('"') || cell.includes(",") || cell.includes("\n") || cell.includes("\r")) {
+        return `"${cell.replace(/"/g, '""')}"`;
+      }
+      return cell;
+    };
+
+    const csv = rows.map((row) => row.map(escapeCell).join(",")).join("\r\n");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="inventory-${inventory.id}-items.csv"`,
+    );
+    res.send(csv);
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/inventories/:id/export", error);
+    res.status(500).json({ message: "Failed to export inventory" });
   }
 });
 
